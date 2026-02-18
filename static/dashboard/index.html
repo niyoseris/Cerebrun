@@ -87,7 +87,48 @@
                 <button class="tab" onclick="showTab('context')">Context Layers</button>
                 <button class="tab" onclick="showTab('consent')">Vault Requests</button>
                 <button class="tab" onclick="showTab('audit')">Audit Log</button>
+                <button class="tab" onclick="showTab('howto')">How to Use</button>
                 <button class="tab" onclick="showTab('settings')">Settings</button>
+            </div>
+
+            <div id="tab-howto" class="hidden">
+                <div class="card">
+                    <h3>How to Use User Context MCP</h3>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="color: #7c8aff; margin-bottom: 8px;">1. Create an API Key</h4>
+                        <p style="font-size: 14px; color: #8b8fa3; line-height: 1.6;">
+                            Go to the <strong>API Keys</strong> tab. Give your key a name (e.g., "Claude Desktop") and select the layers you want to grant access to. 
+                            <span style="color: #ff4757;">Important:</span> Copy the key immediately; you won't see it again.
+                        </p>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="color: #7c8aff; margin-bottom: 8px;">2. Connect Your AI Agent</h4>
+                        <p style="font-size: 14px; color: #8b8fa3; line-height: 1.6;">
+                            Use the <strong>/mcp</strong> endpoint with your API key in the <code>Authorization: Bearer &lt;key&gt;</code> header. 
+                            If you are using an MCP client, point it to this server's URL.
+                        </p>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="color: #7c8aff; margin-bottom: 8px;">3. Manage Context Layers</h4>
+                        <ul style="font-size: 14px; color: #8b8fa3; line-height: 1.6; margin-left: 20px;">
+                            <li><strong>Layer 0 (Public):</strong> General preferences like language and communication style.</li>
+                            <li><strong>Layer 1 (Context):</strong> Active projects, goals, and recent memories.</li>
+                            <li><strong>Layer 2 (Personal):</strong> Personal details for trusted agents.</li>
+                            <li><strong>Layer 3 (Vault):</strong> Highly sensitive data (passwords, API keys) that requires one-time approval per session.</li>
+                        </ul>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="color: #7c8aff; margin-bottom: 8px;">4. Vault Access (Layer 3)</h4>
+                        <p style="font-size: 14px; color: #8b8fa3; line-height: 1.6;">
+                            When an agent needs sensitive data, it will send a request. You'll see this in the <strong>Vault Requests</strong> tab. 
+                            Once approved, the agent gets a temporary token to read the specific fields you allowed.
+                        </p>
+                    </div>
+                </div>
             </div>
 
             <div id="tab-keys">
