@@ -1,0 +1,498 @@
+User MCP
+
+
+# User Context MCP Server - Technical Specification
+
+## Overview
+
+A Model Context Protocol (MCP) server implementing a unified user context layer 
+for multiple AI agents, creating a "Digital Self" that persists across all AI 
+interactions and eliminates the need to repeat preferences, context, and 
+credentials to each agent separately.
+
+## Tech Stack
+
+- **Language:** Rust (Axum or Actix-web framework)
+- **Database:** PostgreSQL with pgcrypto extension
+- **Authentication:** Google OAuth 2.0
+- **Async Runtime:** Tokio
+- **Serialization:** Serde
+- **Cryptography:** ring or RustCrypto
+
+## Architecture: Four-Layer Data Model
+
+### Layer 0 - Public
+Data accessible to any connected agent without special permission.
+
+Fields:
+- language: String (e.g., "tr", "en")
+- timezone: String (e.g., "UTC+3")
+- output_format_preferences: JSON (markdown, code style, verbosity)
+- blocked_topics: Array<String>
+- communication_style: String (formal, casual, concise, detailed)
+
+API Endpoint: GET /api/v0/context
+Authentication: Valid API key (any permission level)
+
+### Layer 1 - Context
+Active work context — projects, recent activity, current focus.
+
+Fields:
+- active_projects: Array<{ name, description, status, last_activity }>
+- recent_conversations: Array<{ agent, topic, timestamp }>
+- working_directories: Array<String>
+- current_goals: Array<String>
+- pinned_memories: Array<String>
+
+API Endpoint: GET /api/v1/context
+Authentication: API key with Context Layer permission
+
+### Layer 2 - Personal
+Identity and personal information for trusted agents.
+
+Fields:
+- display_name: String
+- location: String
+- interests: Array<String>
+- contact_preferences: JSON
+- relationship_notes: String
+
+API Endpoint: GET /api/v2/context
+Authentication: API key with Personal Layer permission
+
+### Layer 3 - Vault
+Encrypted sensitive data requiring explicit per-request consent.
+
+Fields:
+- api_keys: Encrypted JSON Map<String, String>
+- wallet_keys: Encrypted JSON
+- passwords: Encrypted JSON Map<String, String>
+- secrets: Encrypted JSON Map<String, String>
+
+API Endpoint: GET /api/v3/context
+Authentication: API key + Vault Token from consent flow
+
+## Authentication Flow
+
+### User Authentication (Google OAuth 2.0)
+
+1. User clicks "Sign in with Google" on management UI
+2. Frontend redirects to: GET /auth/google
+3. Server redirects to Google OAuth consent screen
+4. User authorizes, Google redirects to: GET /auth/google/callback?code=...
+5. Server exchanges code for Google tokens
+6. Server creates/updates user record with Google profile data
+7. Server creates session, sets HTTP-only cookie
+8. Redirect to management dashboard
+
+Endpoints:
+- GET /auth/google - Initiate Google OAuth flow
+- GET /auth/google/callback - OAuth callback handler
+- POST /auth/logout - Clear session
+- GET /auth/me - Current user info
+
+Dependencies:
+- oauth2 crate for OAuth 2.0 flow
+- Google Cloud Console project with OAuth 2.0 credentials
+- Redirect URI configured in Google Cloud Console
+
+### Agent Authentication (API Keys)
+
+1. User creates API key via management UI with checkbox permissions
+2. Server generates 32-byte random key
+3. Server displays key ONCE (never stored in retrievable form)
+4. Server stores: key_hash (SHA-256), permissions, created_at, status
+5. Agent includes key in Authorization header: Bearer <api_key>
+6. Server hashes incoming key and compares with stored hash
+
+## Database Schema (PostgreSQL)
+
+-- Enable pgcrypto for vault encryption
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Users table (Google OAuth)
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    google_id VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    display_name VARCHAR(255),
+    avatar_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- User sessions
+CREATE TABLE sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) UNIQUE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- API keys (never store plaintext)
+CREATE TABLE api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    key_hash VARCHAR(255) UNIQUE NOT NULL,
+    permissions JSONB NOT NULL DEFAULT '{}',
+    -- { "layer0": true, "layer1": true, "layer2": false }
+    status VARCHAR(50) DEFAULT 'active',
+    last_used_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Layer 0 - Public context
+CREATE TABLE layer0_public (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    language VARCHAR(10) DEFAULT 'en',
+    timezone VARCHAR(50) DEFAULT 'UTC',
+    output_format JSONB DEFAULT '{}',
+    blocked_topics JSONB DEFAULT '[]',
+    communication_style VARCHAR(50) DEFAULT 'balanced',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Layer 1 - Context
+CREATE TABLE layer1_context (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    active_projects JSONB DEFAULT '[]',
+    recent_conversations JSONB DEFAULT '[]',
+    working_directories JSONB DEFAULT '[]',
+    current_goals JSONB DEFAULT '[]',
+    pinned_memories JSONB DEFAULT '[]',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Layer 2 - Personal
+CREATE TABLE layer2_personal (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    display_name VARCHAR(255),
+    location VARCHAR(255),
+    interests JSONB DEFAULT '[]',
+    contact_preferences JSONB DEFAULT '{}',
+    relationship_notes TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Layer 3 - Vault (encrypted with pgcrypto)
+CREATE TABLE layer3_vault (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    encryption_key_hash VARCHAR(255) NOT NULL,
+    -- Derived from user passphrase, never stored directly
+    encrypted_data BYTEA NOT NULL,
+    -- PGP encrypted JSON blob
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Vault consent requests
+CREATE TABLE vault_consent_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    api_key_id UUID REFERENCES api_keys(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL,
+    requested_data JSONB NOT NULL,
+    -- ["api_keys.openai", "wallet_keys"]
+    status VARCHAR(50) DEFAULT 'pending',
+    -- pending, approved, denied, expired
+    vault_token_hash VARCHAR(255),
+    -- If approved, temporary token for vault access
+    expires_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    resolved_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Audit log for all access
+CREATE TABLE audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    api_key_id UUID REFERENCES api_keys(id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL,
+    -- read_layer0, read_layer1, read_layer2, vault_access, etc.
+    layer VARCHAR(50),
+    -- 0, 1, 2, 3, or null for non-layer actions
+    granted BOOLEAN NOT NULL,
+    ip_address INET,
+    user_agent TEXT,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
+CREATE INDEX idx_sessions_token_hash ON sessions(token_hash);
+CREATE INDEX idx_audit_log_user_id ON audit_log(user_id);
+CREATE INDEX idx_audit_log_created_at ON audit_log(created_at);
+CREATE INDEX idx_vault_consent_status ON vault_consent_requests(status);
+
+## API Endpoints
+
+### Authentication (Google OAuth)
+
+GET /auth/google
+- Description: Initiate Google OAuth flow
+- Response: 302 Redirect to Google
+GET /auth/google/callback?code=<code>&state=<state>
+- Description: OAuth callback handler
+- Response: 302 Redirect to dashboard with session cookie
+
+POST /auth/logout
+- Description: Clear session
+- Response: 200 OK
+
+GET /auth/me
+- Description: Current authenticated user
+- Headers: Cookie (session)
+- Response: { id, email, display_name, avatar_url }
+
+### Layer APIs
+
+GET /api/v0/context
+- Headers: Authorization: Bearer <api_key>
+- Required Permission: None (any valid key)
+- Response: Layer 0 public context data
+- Log: audit_log entry with action=read_layer0
+
+PUT /api/v0/context
+- Headers: Authorization: Bearer <api_key>
+- Required Permission: None (any valid key)
+- Body: Partial Layer 0 data to update
+- Response: Updated context
+
+GET /api/v1/context
+- Headers: Authorization: Bearer <api_key>
+- Required Permission: layer1: true
+- Response: Layer 1 context data
+
+PUT /api/v1/context
+- Headers: Authorization: Bearer <api_key>
+- Required Permission: layer1: true
+- Body: Partial Layer 1 data to update
+
+GET /api/v2/context
+- Headers: Authorization: Bearer <api_key>
+- Required Permission: layer2: true
+- Response: Layer 2 personal data
+
+PUT /api/v2/context
+- Headers: Authorization: Bearer <api_key>
+- Required Permission: layer2: true
+- Body: Partial Layer 2 data to update
+
+### Vault API (Layer 3)
+
+POST /api/v3/request
+- Headers: Authorization: Bearer <api_key>
+- Permission: Any key can request, actual access requires consent
+- Body: { "reason": "Why access is needed", "requested_fields": ["api_keys.openai"] }
+- Response: { "request_id": "uuid", "status": "pending" }
+- Side Effect: Create vault_consent_requests entry
+- Notification: User receives notification (push/email/websocket)
+
+POST /api/v3/approve
+- Headers: Cookie (user session)
+- Body: { "request_id": "uuid", "expires_in_hours": 24 }
+- Response: { "vault_token": "vt_xxx..." }
+- Side Effect: Update consent status, generate temporary vault token
+
+POST /api/v3/deny
+- Headers: Cookie (user session)
+- Body: { "request_id": "uuid" }
+- Response: 200 OK
+- Side Effect: Update consent status to denied
+
+GET /api/v3/context
+- Headers: Authorization: Bearer <api_key>, X-Vault-Token: <vault_token>
+- Required: Valid API key + Valid vault token + Approved consent
+- Response: Decrypted vault data for approved fields only
+
+### API Key Management (User Dashboard)
+
+GET /api/keys
+- Headers: Cookie (user session)
+- Response: Array of { id, name, permissions, created_at, last_used_at, status }
+- Note: NEVER return actual key values
+
+POST /api/keys
+- Headers: Cookie (user session)
+- Body: { "name": "OpenClaw Agent", "permissions": { "layer0": true, "layer1": true, "layer2": false } }
+- Response: { "id": "uuid", "key": "sk_live_xxx..." }
+- Important: This is the ONLY time the key is shown
+
+DELETE /api/keys/:id
+- Headers: Cookie (user session)
+- Response: 200 OK
+- Side Effect: Immediately invalidate key
+
+POST /api/keys/:id/revoke
+- Headers: Cookie (user session)
+- Response: 200 OK
+- Side Effect: Set status to revoked
+
+### Audit & Management
+
+GET /api/audit
+- Headers: Cookie (user session)
+- Query: ?from=<date>&to=<date>&layer=<0|1|2|3>
+- Response: Paginated audit log entries
+
+GET /api/consent/pending
+- Headers: Cookie (user session)
+- Response: Array of pending vault_consent_requests
+
+POST /api/export
+- Headers: Cookie (user session)
+- Response: Complete user data export (GDPR compliance)
+
+DELETE /api/account
+- Headers: Cookie (user session)
+- Body: { "confirm": "DELETE" }
+- Response: 200 OK
+- Side Effect: Delete all user data
+
+## MCP Protocol Implementation
+
+The server implements the Model Context Protocol (MCP) spec:
+
+### Tool: get_context
+{
+  "name": "get_context",
+  "description": "Retrieve user context data for a specific layer",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "layer": { "type": "integer", "enum": [0, 1, 2, 3] },
+      "fields": { "type": "array", "items": { "type": "string" } }
+    },
+    "required": ["layer"]
+  }
+}
+
+### Tool: update_context
+{
+"name": "update_context",
+  "description": "Update user context data for a specific layer",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "layer": { "type": "integer", "enum": [0, 1, 2] },
+      "data": { "type": "object" }
+    },
+    "required": ["layer", "data"]
+  }
+}
+
+### Tool: request_vault_access
+{
+  "name": "request_vault_access",
+  "description": "Request access to vault data",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "reason": { "type": "string" },
+      "requested_fields": { "type": "array", "items": { "type": "string" } }
+    },
+    "required": ["reason", "requested_fields"]
+  }
+}
+
+### MCP Server Endpoint
+POST /mcp
+- Content-Type: application/json
+- Implements MCP protocol for tool discovery and execution
+- Supports Streamable HTTP and SSE transports
+
+## Project Structure
+
+user-context-mcp/
+├── Cargo.toml
+├── .env.example
+├── migrations/
+│   ├── 001_initial.sql
+│   └── 002_add_indexes.sql
+├── src/
+│   ├── main.rs
+│   ├── config.rs
+│   ├── error.rs
+│   ├── db/
+│   │   ├── mod.rs
+│   │   ├── pool.rs
+│   │   ├── users.rs
+│   │   ├── api_keys.rs
+│   │   ├── layers.rs
+│   │   ├── vault.rs
+│   │   └── audit.rs
+│   ├── auth/
+│   │   ├── mod.rs
+│   │   ├── oauth.rs
+│   │   ├── session.rs
+│   │   └── api_key.rs
+│   ├── api/
+│   │   ├── mod.rs
+│   │   ├── layers.rs
+│   │   ├── keys.rs
+│   │   ├── vault.rs
+│   │   └── audit.rs
+│   ├── mcp/
+│   │   ├── mod.rs
+│   │   ├── server.rs
+│   │   └── tools.rs
+│   ├── crypto/
+│   │   ├── mod.rs
+│   │   ├── hash.rs
+│   │   └── vault.rs
+│   └── models/
+│       ├── mod.rs
+│       ├── user.rs
+│       ├── api_key.rs
+│       └── context.rs
+├── static/
+│   └── dashboard/ (frontend if needed)
+└── tests/
+    ├── integration_tests.rs
+    └── vault_tests.rs
+
+## Environment Variables
+
+DATABASE_URL=postgresql://user:pass@localhost/usercontext
+GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxx
+GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback
+SESSION_SECRET=random-32-byte-secret
+VAULT_ENCRYPTION_KEY=derived-from-user-passphrase
+SERVER_HOST=0.0.0.0
+SERVER_PORT=3000
+
+## Security Requirements
+
+1. API keys shown ONCE at creation, stored as SHA-256 hash only
+2. Vault data encrypted with AES-256-GCM via pgcrypto
+3. All access logged to audit_log table
+4. Session tokens are HTTP-only, Secure cookies
+5. Vault consent tokens expire (default 24 hours)
+6. Rate limiting on API endpoints
+7. CORS configured for allowed origins only
+8. Google OAuth state parameter with CSRF protection
+
+## Success Criteria
+
+1. User can sign in with Google and manage their identity
+2. User can create API keys with granular layer permissions via checkboxes
+3. API keys are displayed exactly once and never retrievable again
+4. Each layer has a separate API endpoint with independent authorization
+5. Agents with valid keys can immediately retrieve permitted context data
+6. Vault access always requires explicit user approval via consent flow
+7. All data access is logged with timestamp, agent, action, and layer
+8. User can export all data (GDPR)
+9. User can revoke any API key instantly
+10. Works with at least one real MCP client (OpenClaw, Windsurf, Claude Desktop)
+
+## Future Enhancements
+
+- WebSocket notifications for consent requests
+- Email notifications for vault access requests
+- Time-limited API keys (expiration dates)
+- Scoped field permissions within layers
+- Webhook support for audit events
+- Multi-tenant support
