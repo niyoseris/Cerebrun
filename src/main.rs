@@ -1,0 +1,109 @@
+mod api;
+mod auth;
+mod config;
+mod crypto;
+mod db;
+mod error;
+mod mcp;
+mod models;
+
+use axum::http::header;
+use axum::routing::{delete, get, post, put};
+use axum::Router;
+use sqlx::PgPool;
+use std::net::SocketAddr;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: PgPool,
+    pub config: config::AppConfig,
+}
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
+    let config = config::AppConfig::from_env();
+
+    let pool = db::create_pool(&config.database_url)
+        .await
+        .expect("Failed to create database pool");
+
+    db::pool::run_migrations(&pool)
+        .await
+        .expect("Failed to run migrations");
+
+    let state = AppState {
+        pool,
+        config: config.clone(),
+    };
+
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(vec![
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::COOKIE,
+            "X-Vault-Token".parse().unwrap(),
+        ]);
+
+    let app = Router::new()
+        .route("/", get(serve_dashboard))
+        .route("/auth/google", get(auth::oauth::google_auth))
+        .route("/auth/google/callback", get(auth::oauth::google_callback))
+        .route("/auth/logout", post(auth::oauth::logout))
+        .route("/auth/me", get(api::layers::get_me))
+        .route("/api/v0/context", get(api::layers::get_layer0))
+        .route("/api/v0/context", put(api::layers::put_layer0))
+        .route("/api/v1/context", get(api::layers::get_layer1))
+        .route("/api/v1/context", put(api::layers::put_layer1))
+        .route("/api/v2/context", get(api::layers::get_layer2))
+        .route("/api/v2/context", put(api::layers::put_layer2))
+        .route("/api/v3/request", post(api::vault::request_vault_access))
+        .route("/api/v3/approve", post(api::vault::approve_vault_request))
+        .route("/api/v3/deny", post(api::vault::deny_vault_request))
+        .route("/api/v3/context", get(api::vault::get_vault_context))
+        .route("/api/keys", get(api::keys::list_keys))
+        .route("/api/keys", post(api::keys::create_key))
+        .route("/api/keys/:id", delete(api::keys::delete_key))
+        .route("/api/keys/:id/revoke", post(api::keys::revoke_key))
+        .route("/api/audit", get(api::audit::get_audit_log))
+        .route("/api/consent/pending", get(api::vault::get_pending_consents))
+        .route("/api/export", post(api::audit::export_data))
+        .route("/api/account", delete(api::audit::delete_account))
+        .route("/mcp", post(mcp::server::handle_mcp))
+        .route("/health", get(health_check))
+        .layer(cors)
+        .layer(TraceLayer::new_for_http())
+        .with_state(state);
+
+    let addr: SocketAddr = format!("{}:{}", config.server_host, config.server_port)
+        .parse()
+        .expect("Invalid address");
+
+    tracing::info!("Server starting on {}", addr);
+
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+
+async fn health_check() -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({
+        "status": "healthy",
+        "service": "user-context-mcp",
+        "version": "0.1.0"
+    }))
+}
+
+async fn serve_dashboard() -> axum::response::Html<String> {
+    let html = include_str!("../static/dashboard/index.html");
+    axum::response::Html(html.to_string())
+}

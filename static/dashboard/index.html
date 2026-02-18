@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Context MCP - Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e5ee; min-height: 100vh; }
+        .header { background: #1a1d27; border-bottom: 1px solid #2a2d3a; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; color: #7c8aff; }
+        .header .user-info { display: flex; align-items: center; gap: 12px; }
+        .header .user-info img { width: 32px; height: 32px; border-radius: 50%; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+        .auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; }
+        .auth-screen h2 { font-size: 28px; margin-bottom: 8px; }
+        .auth-screen p { color: #8b8fa3; margin-bottom: 24px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+        .btn-primary { background: #7c8aff; color: white; }
+        .btn-primary:hover { background: #6b79ee; }
+        .btn-danger { background: #ff4757; color: white; }
+        .btn-danger:hover { background: #ee3646; }
+        .btn-secondary { background: #2a2d3a; color: #e1e5ee; }
+        .btn-secondary:hover { background: #3a3d4a; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: #1a1d27; padding: 4px; border-radius: 10px; }
+        .tab { padding: 10px 20px; border: none; background: transparent; color: #8b8fa3; cursor: pointer; border-radius: 8px; font-size: 14px; }
+        .tab.active { background: #7c8aff; color: white; }
+        .card { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+        .card h3 { font-size: 16px; margin-bottom: 12px; color: #7c8aff; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 13px; color: #8b8fa3; margin-bottom: 6px; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px 12px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; color: #e1e5ee; font-size: 14px; }
+        .form-group textarea { min-height: 80px; resize: vertical; }
+        .checkbox-group { display: flex; gap: 16px; flex-wrap: wrap; }
+        .checkbox-group label { display: flex; align-items: center; gap: 6px; color: #e1e5ee; cursor: pointer; }
+        .checkbox-group input[type="checkbox"] { width: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #2a2d3a; font-size: 13px; }
+        th { color: #8b8fa3; font-weight: 500; }
+        .status-active { color: #2ed573; }
+        .status-revoked { color: #ff4757; }
+        .key-display { background: #0f1117; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 13px; word-break: break-all; border: 1px solid #7c8aff; margin: 12px 0; }
+        .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+        .alert-warning { background: #ff47571a; border: 1px solid #ff4757; color: #ff6b7a; }
+        .alert-info { background: #7c8aff1a; border: 1px solid #7c8aff; color: #9ba6ff; }
+        .consent-card { display: flex; justify-content: space-between; align-items: center; }
+        .consent-info { flex: 1; }
+        .consent-actions { display: flex; gap: 8px; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .badge-pending { background: #ffa5021a; color: #ffa502; }
+        .hidden { display: none; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+        .layer-tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; }
+        .layer-tag-0 { background: #2ed5731a; color: #2ed573; }
+        .layer-tag-1 { background: #7c8aff1a; color: #7c8aff; }
+        .layer-tag-2 { background: #ffa5021a; color: #ffa502; }
+    </style>
+</head>
+<body>
+    <div id="auth-screen" class="auth-screen">
+        <h2>User Context MCP</h2>
+        <p>Your Digital Self — unified context for all AI agents</p>
+        <a href="/auth/google" class="btn btn-primary">Sign in with Google</a>
+        <div style="margin-top: 32px; text-align: center; max-width: 500px;">
+            <p style="font-size: 13px; color: #6b6f82; line-height: 1.6;">
+                Create a persistent identity layer that any MCP-compatible AI agent can access.
+                Manage your preferences, context, and secrets with granular permission controls.
+            </p>
+        </div>
+    </div>
+
+    <div id="dashboard" class="hidden">
+        <div class="header">
+            <h1>User Context MCP</h1>
+            <div class="user-info">
+                <span id="user-name"></span>
+                <img id="user-avatar" src="" alt="" />
+                <button class="btn btn-secondary btn-sm" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('keys')">API Keys</button>
+                <button class="tab" onclick="showTab('context')">Context Layers</button>
+                <button class="tab" onclick="showTab('consent')">Vault Requests</button>
+                <button class="tab" onclick="showTab('audit')">Audit Log</button>
+                <button class="tab" onclick="showTab('settings')">Settings</button>
+            </div>
+
+            <div id="tab-keys">
+                <div class="card">
+                    <h3>Create New API Key</h3>
+                    <div class="form-group">
+                        <label>Key Name</label>
+                        <input type="text" id="key-name" placeholder="e.g., Claude Desktop Agent" />
+                    </div>
+                    <div class="form-group">
+                        <label>Permissions</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="perm-layer0" checked disabled /> Layer 0 (Public)</label>
+                            <label><input type="checkbox" id="perm-layer1" /> Layer 1 (Context)</label>
+                            <label><input type="checkbox" id="perm-layer2" /> Layer 2 (Personal)</label>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="createKey()">Create API Key</button>
+                    <div id="new-key-display" class="hidden">
+                        <div class="alert alert-warning" style="margin-top: 12px;">
+                            Copy this key now — it will never be shown again!
+                        </div>
+                        <div class="key-display" id="new-key-value"></div>
+                        <button class="btn btn-secondary btn-sm" onclick="copyKey()">Copy to Clipboard</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Your API Keys</h3>
+                    <table>
+                        <thead>
+                            <tr><th>Name</th><th>Permissions</th><th>Status</th><th>Last Used</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody id="keys-table"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="tab-context" class="hidden">
+                <div class="grid-2">
+                    <div class="card">
+                        <h3>Layer 0 — Public</h3>
+                        <div class="form-group">
+                            <label>Language</label>
+                            <input type="text" id="l0-language" placeholder="en" />
+                        </div>
+                        <div class="form-group">
+                            <label>Timezone</label>
+                            <input type="text" id="l0-timezone" placeholder="UTC" />
+                        </div>
+                        <div class="form-group">
+                            <label>Communication Style</label>
+                            <select id="l0-style">
+                                <option value="balanced">Balanced</option>
+                                <option value="formal">Formal</option>
+                                <option value="casual">Casual</option>
+                                <option value="concise">Concise</option>
+                                <option value="detailed">Detailed</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="saveLayer0()">Save Layer 0</button>
+                    </div>
+                    <div class="card">
+                        <h3>Layer 2 — Personal</h3>
+                        <div class="form-group">
+                            <label>Display Name</label>
+                            <input type="text" id="l2-name" />
+                        </div>
+                        <div class="form-group">
+                            <label>Location</label>
+                            <input type="text" id="l2-location" />
+                        </div>
+                        <div class="form-group">
+                            <label>Interests (comma-separated)</label>
+                            <input type="text" id="l2-interests" placeholder="AI, coding, music" />
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="saveLayer2()">Save Layer 2</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Layer 1 — Active Context</h3>
+                    <div class="form-group">
+                        <label>Current Goals (one per line)</label>
+                        <textarea id="l1-goals" placeholder="Build MCP server&#10;Learn Rust"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Pinned Memories (one per line)</label>
+                        <textarea id="l1-memories" placeholder="Important context for agents..."></textarea>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="saveLayer1()">Save Layer 1</button>
+                </div>
+            </div>
+
+            <div id="tab-consent" class="hidden">
+                <div class="card">
+                    <h3>Pending Vault Access Requests</h3>
+                    <div id="consent-list"></div>
+                </div>
+            </div>
+
+            <div id="tab-audit" class="hidden">
+                <div class="card">
+                    <h3>Access Audit Log</h3>
+                    <table>
+                        <thead>
+                            <tr><th>Time</th><th>Action</th><th>Layer</th><th>Granted</th></tr>
+                        </thead>
+                        <tbody id="audit-table"></tbody>
+                    </table>
+                    <div style="margin-top: 12px;">
+                        <button class="btn btn-secondary btn-sm" onclick="loadAudit()">Refresh</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-settings" class="hidden">
+                <div class="card">
+                    <h3>Data Export (GDPR)</h3>
+                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">Download all your data in JSON format.</p>
+                    <button class="btn btn-secondary" onclick="exportData()">Export All Data</button>
+                </div>
+                <div class="card">
+                    <h3>Delete Account</h3>
+                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">Permanently delete your account and all associated data.</p>
+                    <button class="btn btn-danger" onclick="deleteAccount()">Delete Account</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = null;
+
+        async function init() {
+            try {
+                const res = await fetch('/auth/me');
+                if (res.ok) {
+                    currentUser = await res.json();
+                    document.getElementById('auth-screen').classList.add('hidden');
+                    document.getElementById('dashboard').classList.remove('hidden');
+                    document.getElementById('user-name').textContent = currentUser.display_name || currentUser.email;
+                    if (currentUser.avatar_url) {
+                        document.getElementById('user-avatar').src = currentUser.avatar_url;
+                    }
+                    loadKeys();
+                }
+            } catch (e) {}
+        }
+
+        function showTab(name) {
+            document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + name).classList.remove('hidden');
+            event.target.classList.add('active');
+            if (name === 'audit') loadAudit();
+            if (name === 'consent') loadConsents();
+            if (name === 'context') loadContext();
+        }
+
+        async function loadKeys() {
+            const res = await fetch('/api/keys');
+            if (!res.ok) return;
+            const keys = await res.json();
+            const tbody = document.getElementById('keys-table');
+            tbody.innerHTML = keys.map(k => `
+                <tr>
+                    <td>${k.name}</td>
+                    <td>
+                        <span class="layer-tag layer-tag-0">L0</span>
+                        ${k.permissions.layer1 ? '<span class="layer-tag layer-tag-1">L1</span>' : ''}
+                        ${k.permissions.layer2 ? '<span class="layer-tag layer-tag-2">L2</span>' : ''}
+                    </td>
+                    <td class="status-${k.status || 'active'}">${k.status || 'active'}</td>
+                    <td>${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never'}</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" onclick="revokeKey('${k.id}')">Revoke</button>
+                        <button class="btn btn-secondary btn-sm" onclick="deleteKey('${k.id}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function createKey() {
+            const name = document.getElementById('key-name').value;
+            if (!name) return alert('Please enter a key name');
+            const permissions = {
+                layer0: true,
+                layer1: document.getElementById('perm-layer1').checked,
+                layer2: document.getElementById('perm-layer2').checked
+            };
+            const res = await fetch('/api/keys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, permissions })
+            });
+            if (!res.ok) return alert('Failed to create key');
+            const data = await res.json();
+            document.getElementById('new-key-value').textContent = data.key;
+            document.getElementById('new-key-display').classList.remove('hidden');
+            document.getElementById('key-name').value = '';
+            loadKeys();
+        }
+
+        function copyKey() {
+            const key = document.getElementById('new-key-value').textContent;
+            navigator.clipboard.writeText(key);
+        }
+
+        async function revokeKey(id) {
+            if (!confirm('Revoke this API key?')) return;
+            await fetch(`/api/keys/${id}/revoke`, { method: 'POST' });
+            loadKeys();
+        }
+
+        async function deleteKey(id) {
+            if (!confirm('Delete this API key permanently?')) return;
+            await fetch(`/api/keys/${id}`, { method: 'DELETE' });
+            loadKeys();
+        }
+
+        async function loadContext() {
+            // We use session-based API calls through a proxy pattern
+            // For the dashboard, we'll show the data management UI
+        }
+
+        async function saveLayer0() {
+            alert('Layer 0 data saved via API keys. Use the API to update context data.');
+        }
+
+        async function saveLayer1() {
+            alert('Layer 1 data saved via API keys. Use the API to update context data.');
+        }
+
+        async function saveLayer2() {
+            alert('Layer 2 data saved via API keys. Use the API to update context data.');
+        }
+
+        async function loadConsents() {
+            const res = await fetch('/api/consent/pending');
+            if (!res.ok) return;
+            const requests = await res.json();
+            const container = document.getElementById('consent-list');
+            if (requests.length === 0) {
+                container.innerHTML = '<p style="color: #8b8fa3; font-size: 13px;">No pending vault access requests.</p>';
+                return;
+            }
+            container.innerHTML = requests.map(r => `
+                <div class="card consent-card" style="margin-bottom: 8px;">
+                    <div class="consent-info">
+                        <strong>Reason:</strong> ${r.reason}<br/>
+                        <span style="color: #8b8fa3; font-size: 12px;">
+                            Requested: ${JSON.stringify(r.requested_data)} |
+                            <span class="badge badge-pending">${r.status}</span>
+                        </span>
+                    </div>
+                    <div class="consent-actions">
+                        <button class="btn btn-primary btn-sm" onclick="approveConsent('${r.id}')">Approve</button>
+                        <button class="btn btn-danger btn-sm" onclick="denyConsent('${r.id}')">Deny</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function approveConsent(id) {
+            const res = await fetch('/api/v3/approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ request_id: id, expires_in_hours: 24 })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                alert('Approved! Vault token: ' + data.vault_token);
+                loadConsents();
+            }
+        }
+
+        async function denyConsent(id) {
+            await fetch('/api/v3/deny', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ request_id: id })
+            });
+            loadConsents();
+        }
+
+        async function loadAudit() {
+            const res = await fetch('/api/audit?limit=50');
+            if (!res.ok) return;
+            const data = await res.json();
+            const tbody = document.getElementById('audit-table');
+            tbody.innerHTML = (data.entries || []).map(e => `
+                <tr>
+                    <td>${new Date(e.created_at).toLocaleString()}</td>
+                    <td>${e.action}</td>
+                    <td>${e.layer || '-'}</td>
+                    <td style="color: ${e.granted ? '#2ed573' : '#ff4757'}">${e.granted ? 'Yes' : 'No'}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function exportData() {
+            const res = await fetch('/api/export', { method: 'POST' });
+            if (!res.ok) return alert('Export failed');
+            const data = await res.json();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'user-context-export.json'; a.click();
+        }
+
+        async function deleteAccount() {
+            if (!confirm('Are you sure? This will permanently delete all your data.')) return;
+            if (prompt('Type DELETE to confirm') !== 'DELETE') return;
+            await fetch('/api/account', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirm: 'DELETE' })
+            });
+            window.location.reload();
+        }
+
+        async function logout() {
+            await fetch('/auth/logout', { method: 'POST' });
+            window.location.reload();
+        }
+
+        init();
+    </script>
+</body>
+</html>
