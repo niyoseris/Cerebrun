@@ -38,3 +38,8 @@ externalPort = 80
 deploymentTarget = "autoscale"
 run = ["./target/release/user-context-mcp"]
 build = ["cargo", "build", "--release"]
+
+[userenv]
+
+[userenv.shared]
+GOOGLE_REDIRECT_URI = "https://18f35d8f-bfce-403e-9f66-d910b0d39a14-00-38my8z0fk4olj.kirk.replit.dev/auth/google/callback"
