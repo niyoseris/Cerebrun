@@ -106,13 +106,49 @@
                     <div style="margin-bottom: 20px;">
                         <h4 style="color: #7c8aff; margin-bottom: 8px;">2. Connect Your AI Agent</h4>
                         <p style="font-size: 14px; color: #8b8fa3; line-height: 1.6;">
-                            Use the <strong>/mcp</strong> endpoint with your API key in the <code>Authorization: Bearer &lt;key&gt;</code> header. 
-                            If you are using an MCP client, point it to this server's URL.
+                            To connect an agent like <strong>Claude Desktop</strong>, add this to your <code>claude_desktop_config.json</code>:
+                        </p>
+                        <pre style="background: #0f1117; padding: 12px; border-radius: 8px; font-size: 12px; margin-top: 8px; border: 1px solid #2a2d3a; overflow-x: auto;">
+{
+  "mcpServers": {
+    "user-context": {
+      "command": "curl",
+      "args": [
+        "-X", "POST",
+        "-H", "Authorization: Bearer YOUR_API_KEY_HERE",
+        "-H", "Content-Type: application/json",
+        "-d", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}",
+        "https://18f35d8f-bfce-403e-9f66-d910b0d39a14-00-38my8z0fk4olj.kirk.replit.dev/mcp"
+      ]
+    }
+  }
+}</pre>
+                        <p style="font-size: 13px; color: #8b8fa3; margin-top: 8px;">
+                            <strong>Note:</strong> Most MCP clients expect a local command or SSE. This server supports <strong>HTTP POST</strong> with JSON-RPC. 
+                            Replace <code>YOUR_API_KEY_HERE</code> with the key you created in the first step.
                         </p>
                     </div>
 
                     <div style="margin-bottom: 20px;">
-                        <h4 style="color: #7c8aff; margin-bottom: 8px;">3. Manage Context Layers</h4>
+                        <h4 style="color: #7c8aff; margin-bottom: 8px;">3. Direct API Usage (Example)</h4>
+                        <p style="font-size: 14px; color: #8b8fa3; line-height: 1.6;">
+                            You can also use <code>curl</code> to test it directly from your terminal:
+                        </p>
+                        <pre style="background: #0f1117; padding: 12px; border-radius: 8px; font-size: 12px; margin-top: 8px; border: 1px solid #2a2d3a; overflow-x: auto;">
+# List available tools
+curl -X POST \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  https://18f35d8f-bfce-403e-9f66-d910b0d39a14-00-38my8z0fk4olj.kirk.replit.dev/mcp
+
+# Get Layer 0 (Public) Context
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://18f35d8f-bfce-403e-9f66-d910b0d39a14-00-38my8z0fk4olj.kirk.replit.dev/api/v0/context</pre>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="color: #7c8aff; margin-bottom: 8px;">4. Manage Context Layers</h4>
                         <ul style="font-size: 14px; color: #8b8fa3; line-height: 1.6; margin-left: 20px;">
                             <li><strong>Layer 0 (Public):</strong> General preferences like language and communication style.</li>
                             <li><strong>Layer 1 (Context):</strong> Active projects, goals, and recent memories.</li>
