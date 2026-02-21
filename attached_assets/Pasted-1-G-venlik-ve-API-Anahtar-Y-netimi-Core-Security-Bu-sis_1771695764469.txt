@@ -1,0 +1,38 @@
+1. Güvenlik ve API Anahtarı Yönetimi (Core Security)
+Bu sistemin en kritik noktası, kullanıcıların kendi API anahtarlarını getirecek olmasıdır (Bring Your Own Key - BYOK).
+
+Kriptografik Kasa (Vault): Kullanıcı API anahtarları veritabanında asla düz metin durmamalıdır. Rust tarafında AES-256-GCM ile şifrelenmeli ve sadece istek atılacağı an (runtime) RAM üzerinde çözülmelidir.
+
+Anahtar Validasyonu: Kullanıcı bir anahtar girdiğinde, Rust backend'i anında ilgili API'ye (örn. OpenAI) 1 tokenlik bir "ping" isteği atarak anahtarın geçerli olup olmadığını ve bakiye durumunu kontrol etmelidir.
+
+Google OAuth 2.0 Oturum Yönetimi: Güvenli JWT (JSON Web Token) veya HTTP-only cookie tabanlı session yönetimi.
+
+2. Akıllı Bağlam ve Hafıza Yönetimi (Context Engineering)
+Projenin ana amacı olan "aynı sorunu farklı LLM'lere tekrar anlatmama" vizyonunu gerçekleştirecek özellikler:
+
+Universal Context (Evrensel Bağlam): Kullanıcının bir proje veya konu hakkında girdiği temel bilgilerin (örn: "Bu konuşmadaki kodlar Rust ile yazılacak") sistemde bir "Sistem Promptu" olarak tutulması ve seçilen her ajana (Gemini, ChatGPT) otomatik olarak enjekte edilmesi.
+
+Görüşme (Thread) Çatallanması: Kullanıcı ChatGPT ile bir noktaya kadar gelip, "Buradan sonrasını Gemini'ın analiz etmesini istiyorum" dediğinde, geçmiş konuşma geçmişinin (history) standart bir formata (JSON/Message Array) çevrilip anında Gemini'a aktarılabilmesi.
+
+Çapraz Ajan Kıyaslaması (A/B Test Modu): Tek bir prompt'u aynı anda hem ChatGPT'ye hem de Gemini'a gönderip, dönen yanıtları Vanilla JS arayüzünde yan yana (split-screen) gösterebilme.
+
+3. Asenkron İletişim ve Performans (Rust & Networking)
+Gerçek Zamanlı Veri Akışı (Streaming): LLM'ler kelime kelime yanıt üretir. Kullanıcının 15 saniye boş ekrana bakmasını engellemek için Rust üzerinden arayüze SSE (Server-Sent Events) veya WebSockets ile akış (stream) sağlanmalıdır.
+
+Hata Toleransı (Resilience): Rate limit (API sınırına takılma) veya timeout durumlarında Rust backend'inin isteği otomatik olarak tekrar denemesi (Exponential Backoff) veya kullanıcıya anlamlı bir hata dönmesi.
+
+4. Gelişmiş Kullanıcı Deneyimi (Vanilla JS Frontend)
+Frontend'de framework kullanmayacağımız için DOM manipülasyonları çok temiz olmalıdır.
+
+Markdown ve Kod Blokları: Gelen yanıtların canlı olarak Markdown formatında render edilmesi ve kod blokları için "Kopyala" butonlarının sisteme entegre edilmesi.
+
+Performanslı DOM Güncellemeleri: Stream edilen her harfte tüm ekranı yenilemek yerine (ki bu tarayıcıyı kilitler), sadece ilgili mesajın DOM düğümünü (node) güncelleyen verimli bir Vanilla JS fonksiyonu.
+
+Yerel Hafıza (Local Storage): Kullanıcının arayüz tercihleri (karanlık mod, varsayılan LLM seçimi vb.) tarayıcı önbelleğinde tutulmalıdır.
+
+5. Telemetri ve Maliyet Kontrolü
+Kullanıcılar kendi cebinden ödeme yapacağı için token kullanımı şeffaf olmalıdır.
+
+Token Metrikleri: Rust tarafında tiktoken gibi kütüphaneler kullanılarak atılan her isteğin kaç token yaktığının hesaplanması ve veritabanına loglanması.
+
+Maliyet Dashboard'u: Kullanıcının hangi modele ne kadar harcama yaptığını gösteren basit bir özet ekranı.

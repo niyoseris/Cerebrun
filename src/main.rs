@@ -4,6 +4,7 @@ mod config;
 mod crypto;
 mod db;
 mod error;
+mod llm;
 mod mcp;
 mod models;
 
@@ -57,6 +58,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(serve_dashboard))
+        .route("/chat", get(serve_chat))
         .route("/auth/google", get(auth::oauth::google_auth))
         .route("/auth/google/callback", get(auth::oauth::google_callback))
         .route("/auth/logout", post(auth::oauth::logout))
@@ -80,6 +82,18 @@ async fn main() {
         .route("/api/export", post(api::audit::export_data))
         .route("/api/account", delete(api::audit::delete_account))
         .route("/mcp", post(mcp::server::handle_mcp))
+        .route("/api/llm/keys", get(api::llm::list_provider_keys))
+        .route("/api/llm/keys", post(api::llm::add_provider_key))
+        .route("/api/llm/keys/:id", delete(api::llm::delete_provider_key))
+        .route("/api/llm/conversations", get(api::llm::list_conversations))
+        .route("/api/llm/conversations", post(api::llm::create_conversation))
+        .route("/api/llm/conversations/:id", get(api::llm::get_conversation_messages))
+        .route("/api/llm/conversations/:id", delete(api::llm::delete_conversation))
+        .route("/api/llm/conversations/:id/chat", post(api::llm::chat))
+        .route("/api/llm/conversations/:id/stream", post(api::llm::stream_chat))
+        .route("/api/llm/conversations/:id/fork", post(api::llm::fork_conversation))
+        .route("/api/llm/compare", post(api::llm::compare))
+        .route("/api/llm/metrics", get(api::llm::get_usage_metrics))
         .route("/health", get(health_check))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -99,11 +113,16 @@ async fn health_check() -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({
         "status": "healthy",
         "service": "user-context-mcp",
-        "version": "0.1.0"
+        "version": "0.2.0"
     }))
 }
 
 async fn serve_dashboard() -> axum::response::Html<String> {
     let html = include_str!("../static/dashboard/index.html");
+    axum::response::Html(html.to_string())
+}
+
+async fn serve_chat() -> axum::response::Html<String> {
+    let html = include_str!("../static/dashboard/chat.html");
     axum::response::Html(html.to_string())
 }

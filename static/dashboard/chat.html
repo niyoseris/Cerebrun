@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Gateway</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e5ee; min-height: 100vh; display: flex; flex-direction: column; }
+        a { color: #7c8aff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .header { background: #1a1d27; border-bottom: 1px solid #2a2d3a; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .header h1 { font-size: 18px; color: #7c8aff; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .header-right a { font-size: 13px; }
+
+        .layout { display: flex; flex: 1; overflow: hidden; }
+
+        .left-sidebar { width: 260px; background: #1a1d27; border-right: 1px solid #2a2d3a; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+        .right-sidebar { width: 300px; background: #1a1d27; border-left: 1px solid #2a2d3a; flex-shrink: 0; overflow-y: auto; }
+        .center-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+        .sidebar-section { padding: 12px; border-bottom: 1px solid #2a2d3a; }
+        .sidebar-section h3 { font-size: 13px; color: #7c8aff; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        .btn { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-primary { background: #7c8aff; color: white; }
+        .btn-primary:hover { background: #6b79ee; }
+        .btn-danger { background: #ff4757; color: white; }
+        .btn-danger:hover { background: #ee3646; }
+        .btn-secondary { background: #2a2d3a; color: #e1e5ee; }
+        .btn-secondary:hover { background: #3a3d4a; }
+        .btn-sm { padding: 4px 10px; font-size: 11px; }
+        .btn-block { width: 100%; justify-content: center; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; font-size: 11px; color: #8b8fa3; margin-bottom: 4px; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 7px 10px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px; color: #e1e5ee; font-size: 13px; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #7c8aff; }
+
+        .conv-list { flex: 1; overflow-y: auto; }
+        .conv-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #1f2230; transition: background 0.15s; display: flex; justify-content: space-between; align-items: center; }
+        .conv-item:hover { background: #22253a; }
+        .conv-item.active { background: #2a2d4a; border-left: 3px solid #7c8aff; }
+        .conv-item-info { flex: 1; min-width: 0; }
+        .conv-item-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .conv-item-meta { font-size: 11px; color: #6b6f82; margin-top: 2px; }
+        .conv-item-delete { opacity: 0; transition: opacity 0.15s; padding: 2px 6px; background: none; border: none; color: #ff4757; cursor: pointer; font-size: 14px; flex-shrink: 0; }
+        .conv-item:hover .conv-item-delete { opacity: 1; }
+
+        .chat-header { padding: 10px 16px; background: #1a1d27; border-bottom: 1px solid #2a2d3a; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .chat-header-info { font-size: 13px; color: #8b8fa3; }
+        .chat-header-actions { display: flex; gap: 8px; align-items: center; }
+
+        .chat-messages { flex: 1; overflow-y: auto; padding: 16px; }
+        .chat-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #6b6f82; font-size: 14px; flex-direction: column; gap: 8px; }
+
+        .message { margin-bottom: 16px; display: flex; flex-direction: column; }
+        .message-user { align-items: flex-end; }
+        .message-assistant { align-items: flex-start; }
+        .message-bubble { max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.6; position: relative; }
+        .message-user .message-bubble { background: #7c8aff; color: white; border-bottom-right-radius: 4px; }
+        .message-assistant .message-bubble { background: #1a1d27; border: 1px solid #2a2d3a; border-bottom-left-radius: 4px; }
+        .message-meta { font-size: 11px; color: #6b6f82; margin-top: 4px; display: flex; gap: 8px; align-items: center; }
+        .message-actions { display: flex; gap: 4px; margin-top: 4px; }
+        .message-actions button { background: none; border: 1px solid #2a2d3a; color: #8b8fa3; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+        .message-actions button:hover { background: #2a2d3a; color: #e1e5ee; }
+
+        .chat-input-area { padding: 12px 16px; background: #1a1d27; border-top: 1px solid #2a2d3a; flex-shrink: 0; }
+        .chat-input-row { display: flex; gap: 8px; }
+        .chat-input-row textarea { flex: 1; padding: 10px 14px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; color: #e1e5ee; font-size: 14px; resize: none; min-height: 42px; max-height: 120px; font-family: inherit; }
+        .chat-input-row textarea:focus { outline: none; border-color: #7c8aff; }
+        .chat-input-row button { flex-shrink: 0; }
+
+        .toggle-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8b8fa3; cursor: pointer; }
+        .toggle-label input[type="checkbox"] { accent-color: #7c8aff; }
+
+        .key-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #1f2230; }
+        .key-item-info { font-size: 12px; }
+        .key-item-provider { color: #7c8aff; font-weight: 600; text-transform: uppercase; font-size: 10px; }
+        .key-item-name { color: #e1e5ee; }
+        .key-item button { background: none; border: none; color: #ff4757; cursor: pointer; font-size: 13px; padding: 2px 6px; }
+
+        .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+        .metric-card { background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; padding: 10px; text-align: center; }
+        .metric-value { font-size: 18px; font-weight: 700; color: #7c8aff; }
+        .metric-label { font-size: 10px; color: #6b6f82; margin-top: 2px; text-transform: uppercase; }
+        .metric-breakdown { font-size: 11px; color: #8b8fa3; }
+        .metric-breakdown-item { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #1f2230; }
+
+        .compare-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+        .compare-panel.active { display: flex; }
+        .compare-input-area { padding: 12px 16px; background: #1a1d27; border-bottom: 1px solid #2a2d3a; }
+        .compare-targets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+        .compare-target { background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 6px; font-size: 12px; }
+        .compare-target button { background: none; border: none; color: #ff4757; cursor: pointer; font-size: 14px; }
+        .compare-results { flex: 1; overflow-y: auto; padding: 16px; display: flex; gap: 16px; }
+        .compare-result-card { flex: 1; min-width: 250px; background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+        .compare-result-header { padding: 10px 12px; background: #22253a; border-bottom: 1px solid #2a2d3a; font-size: 12px; font-weight: 600; }
+        .compare-result-body { padding: 12px; flex: 1; overflow-y: auto; font-size: 13px; line-height: 1.6; }
+        .compare-result-footer { padding: 8px 12px; border-top: 1px solid #2a2d3a; font-size: 11px; color: #6b6f82; display: flex; gap: 12px; }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 12px; padding: 20px; width: 380px; max-width: 90%; }
+        .modal h3 { font-size: 16px; color: #7c8aff; margin-bottom: 16px; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+        .md-content h1 { font-size: 1.4em; margin: 8px 0; color: #e1e5ee; }
+        .md-content h2 { font-size: 1.2em; margin: 6px 0; color: #e1e5ee; }
+        .md-content h3 { font-size: 1.1em; margin: 4px 0; color: #e1e5ee; }
+        .md-content p { margin: 4px 0; }
+        .md-content ul, .md-content ol { margin: 4px 0 4px 20px; }
+        .md-content li { margin: 2px 0; }
+        .md-content code { background: #0f1117; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; font-family: 'SF Mono', 'Fira Code', monospace; }
+        .md-content pre { background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; padding: 12px; margin: 8px 0; overflow-x: auto; position: relative; }
+        .md-content pre code { background: none; padding: 0; font-size: 13px; }
+        .copy-btn { position: absolute; top: 6px; right: 6px; background: #2a2d3a; border: none; color: #8b8fa3; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+        .copy-btn:hover { background: #3a3d4a; color: #e1e5ee; }
+        .md-content strong { font-weight: 700; }
+        .md-content em { font-style: italic; }
+
+        .loading-dots::after { content: ''; animation: dots 1.5s steps(4, end) infinite; }
+        @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3a3d4a; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>LLM Gateway</h1>
+        <div class="header-right">
+            <label class="toggle-label">
+                <input type="checkbox" id="compare-mode-toggle" onchange="toggleCompareMode()">
+                A/B Compare
+            </label>
+            <a href="/">← Dashboard</a>
+        </div>
+    </div>
+
+    <div class="layout">
+        <div class="left-sidebar">
+            <div class="sidebar-section">
+                <button class="btn btn-primary btn-block btn-sm" onclick="showNewConvModal()">+ New Conversation</button>
+            </div>
+            <div class="conv-list" id="conv-list"></div>
+        </div>
+
+        <div class="center-panel" id="chat-panel">
+            <div class="chat-header" id="chat-header" style="display:none;">
+                <div class="chat-header-info" id="chat-header-info"></div>
+                <div class="chat-header-actions">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="stream-toggle" onchange="savePrefs()">
+                        Stream
+                    </label>
+                </div>
+            </div>
+            <div class="chat-messages" id="chat-messages">
+                <div class="chat-empty" id="chat-empty">
+                    <div style="font-size:32px;">💬</div>
+                    <div>Select or create a conversation to start chatting</div>
+                </div>
+            </div>
+            <div class="chat-input-area" id="chat-input-area" style="display:none;">
+                <div class="chat-input-row">
+                    <textarea id="chat-input" placeholder="Type a message..." rows="1" onkeydown="handleChatKey(event)"></textarea>
+                    <button class="btn btn-primary" id="send-btn" onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="compare-panel" id="compare-panel">
+            <div class="compare-input-area">
+                <div class="sidebar-section" style="border:none;padding:0;">
+                    <h3>Compare Targets</h3>
+                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                        <select id="compare-provider" style="flex:1;padding:6px;background:#0f1117;border:1px solid #2a2d3a;border-radius:6px;color:#e1e5ee;font-size:12px;" onchange="updateCompareModels()">
+                            <option value="openai">OpenAI</option>
+                            <option value="gemini">Gemini</option>
+                            <option value="anthropic">Anthropic</option>
+                        </select>
+                        <select id="compare-model" style="flex:1;padding:6px;background:#0f1117;border:1px solid #2a2d3a;border-radius:6px;color:#e1e5ee;font-size:12px;"></select>
+                        <button class="btn btn-secondary btn-sm" onclick="addCompareTarget()">Add</button>
+                    </div>
+                    <div class="compare-targets" id="compare-targets"></div>
+                </div>
+                <div class="chat-input-row">
+                    <textarea id="compare-input" placeholder="Enter prompt to compare..." rows="2" style="flex:1;padding:10px;background:#0f1117;border:1px solid #2a2d3a;border-radius:8px;color:#e1e5ee;font-size:14px;resize:none;font-family:inherit;"></textarea>
+                    <button class="btn btn-primary" id="compare-btn" onclick="runCompare()">Compare</button>
+                </div>
+            </div>
+            <div class="compare-results" id="compare-results">
+                <div class="chat-empty" style="width:100%;">
+                    <div style="font-size:32px;">⚖️</div>
+                    <div>Add targets and enter a prompt to compare models</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-sidebar">
+            <div class="sidebar-section">
+                <h3>Provider Keys</h3>
+                <div id="keys-list"></div>
+                <details style="margin-top:8px;">
+                    <summary style="cursor:pointer;font-size:12px;color:#8b8fa3;">+ Add Key</summary>
+                    <div style="margin-top:8px;">
+                        <div class="form-group">
+                            <label>Provider</label>
+                            <select id="key-provider">
+                                <option value="openai">OpenAI</option>
+                                <option value="gemini">Gemini</option>
+                                <option value="anthropic">Anthropic</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Key Name</label>
+                            <input type="text" id="key-name" placeholder="My API Key" />
+                        </div>
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <input type="password" id="key-value" placeholder="sk-..." />
+                        </div>
+                        <button class="btn btn-primary btn-sm btn-block" onclick="addProviderKey()">Save Key</button>
+                    </div>
+                </details>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Usage Metrics</h3>
+                <div id="metrics-area">
+                    <div style="font-size:12px;color:#6b6f82;">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="new-conv-modal">
+        <div class="modal">
+            <h3>New Conversation</h3>
+            <div class="form-group">
+                <label>Provider</label>
+                <select id="new-conv-provider" onchange="updateNewConvModels()">
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="anthropic">Anthropic</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Model</label>
+                <select id="new-conv-model"></select>
+            </div>
+            <div class="form-group">
+                <label>Title (optional)</label>
+                <input type="text" id="new-conv-title" placeholder="My conversation" />
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('new-conv-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createConversation()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="fork-modal">
+        <div class="modal">
+            <h3>Fork Conversation</h3>
+            <p style="font-size:13px;color:#8b8fa3;margin-bottom:12px;">Create a new conversation branching from this message with a different model.</p>
+            <div class="form-group">
+                <label>New Provider</label>
+                <select id="fork-provider" onchange="updateForkModels()">
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="anthropic">Anthropic</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>New Model</label>
+                <select id="fork-model"></select>
+            </div>
+            <input type="hidden" id="fork-message-id" />
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('fork-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="doFork()">Fork</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+const MODELS = {
+    openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'o1', 'o1-mini'],
+    gemini: ['gemini-2.5-pro-preview-06-05', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+    anthropic: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest']
+};
+
+let currentConvId = null;
+let conversations = [];
+let compareTargets = [];
+let isSending = false;
+
+function loadPrefs() {
+    const p = JSON.parse(localStorage.getItem('llm_prefs') || '{}');
+    if (p.provider) {
+        const sel = document.getElementById('new-conv-provider');
+        if (sel) sel.value = p.provider;
+    }
+    if (p.stream !== undefined) {
+        document.getElementById('stream-toggle').checked = p.stream;
+    }
+    return p;
+}
+
+function savePrefs() {
+    const prefs = {
+        provider: document.getElementById('new-conv-provider').value,
+        model: document.getElementById('new-conv-model').value,
+        stream: document.getElementById('stream-toggle').checked,
+    };
+    localStorage.setItem('llm_prefs', JSON.stringify(prefs));
+}
+
+async function api(path, opts = {}) {
+    const res = await fetch(path, { credentials: 'include', ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `HTTP ${res.status}`);
+    }
+    return res;
+}
+
+function populateSelect(selectId, provider) {
+    const sel = document.getElementById(selectId);
+    sel.innerHTML = (MODELS[provider] || []).map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+function updateNewConvModels() { populateSelect('new-conv-model', document.getElementById('new-conv-provider').value); }
+function updateForkModels() { populateSelect('fork-model', document.getElementById('fork-provider').value); }
+function updateCompareModels() { populateSelect('compare-model', document.getElementById('compare-provider').value); }
+
+function showNewConvModal() {
+    const prefs = loadPrefs();
+    if (prefs.provider) document.getElementById('new-conv-provider').value = prefs.provider;
+    updateNewConvModels();
+    if (prefs.model) {
+        const sel = document.getElementById('new-conv-model');
+        for (let o of sel.options) { if (o.value === prefs.model) { sel.value = prefs.model; break; } }
+    }
+    document.getElementById('new-conv-modal').classList.add('active');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+async function loadKeys() {
+    try {
+        const res = await api('/api/llm/keys');
+        const keys = await res.json();
+        const el = document.getElementById('keys-list');
+        if (!keys.length) {
+            el.innerHTML = '<div style="font-size:12px;color:#6b6f82;">No keys configured</div>';
+            return;
+        }
+        el.innerHTML = keys.map(k => `
+            <div class="key-item">
+                <div class="key-item-info">
+                    <div class="key-item-provider">${esc(k.provider)}</div>
+                    <div class="key-item-name">${esc(k.key_name)}</div>
+                </div>
+                <button onclick="deleteProviderKey('${k.id}')" title="Delete">✕</button>
+            </div>
+        `).join('');
+    } catch(e) {
+        document.getElementById('keys-list').innerHTML = '<div style="font-size:12px;color:#ff4757;">Failed to load keys</div>';
+    }
+}
+
+async function addProviderKey() {
+    const provider = document.getElementById('key-provider').value;
+    const key_name = document.getElementById('key-name').value.trim();
+    const api_key = document.getElementById('key-value').value.trim();
+    if (!key_name || !api_key) return alert('Please fill all fields');
+    try {
+        await api('/api/llm/keys', { method: 'POST', body: JSON.stringify({ provider, key_name, api_key }) });
+        document.getElementById('key-name').value = '';
+        document.getElementById('key-value').value = '';
+        loadKeys();
+    } catch(e) { alert('Failed to add key: ' + e.message); }
+}
+
+async function deleteProviderKey(id) {
+    if (!confirm('Delete this API key?')) return;
+    try {
+        await api(`/api/llm/keys/${id}`, { method: 'DELETE' });
+        loadKeys();
+    } catch(e) { alert('Failed to delete: ' + e.message); }
+}
+
+async function loadConversations() {
+    try {
+        const res = await api('/api/llm/conversations');
+        conversations = await res.json();
+        renderConvList();
+    } catch(e) {}
+}
+
+function renderConvList() {
+    const el = document.getElementById('conv-list');
+    if (!conversations.length) {
+        el.innerHTML = '<div style="padding:16px;text-align:center;color:#6b6f82;font-size:12px;">No conversations yet</div>';
+        return;
+    }
+    el.innerHTML = conversations.map(c => `
+        <div class="conv-item ${c.id === currentConvId ? 'active' : ''}" onclick="selectConversation('${c.id}')">
+            <div class="conv-item-info">
+                <div class="conv-item-title">${esc(c.title || 'Untitled')}</div>
+                <div class="conv-item-meta">${esc(c.provider)}/${esc(c.model)}</div>
+            </div>
+            <button class="conv-item-delete" onclick="event.stopPropagation();deleteConversation('${c.id}')" title="Delete">✕</button>
+        </div>
+    `).join('');
+}
+
+async function createConversation() {
+    const provider = document.getElementById('new-conv-provider').value;
+    const model = document.getElementById('new-conv-model').value;
+    const title = document.getElementById('new-conv-title').value.trim() || undefined;
+    try {
+        const res = await api('/api/llm/conversations', { method: 'POST', body: JSON.stringify({ provider, model, title }) });
+        const conv = await res.json();
+        closeModal('new-conv-modal');
+        document.getElementById('new-conv-title').value = '';
+        savePrefs();
+        await loadConversations();
+        selectConversation(conv.id);
+    } catch(e) { alert('Failed: ' + e.message); }
+}
+
+async function deleteConversation(id) {
+    if (!confirm('Delete this conversation?')) return;
+    try {
+        await api(`/api/llm/conversations/${id}`, { method: 'DELETE' });
+        if (currentConvId === id) {
+            currentConvId = null;
+            document.getElementById('chat-messages').innerHTML = '<div class="chat-empty" id="chat-empty"><div style="font-size:32px;">💬</div><div>Select or create a conversation</div></div>';
+            document.getElementById('chat-header').style.display = 'none';
+            document.getElementById('chat-input-area').style.display = 'none';
+        }
+        loadConversations();
+    } catch(e) { alert('Failed: ' + e.message); }
+}
+
+async function selectConversation(id) {
+    currentConvId = id;
+    renderConvList();
+    document.getElementById('chat-header').style.display = 'flex';
+    document.getElementById('chat-input-area').style.display = 'block';
+    const conv = conversations.find(c => c.id === id);
+    if (conv) {
+        document.getElementById('chat-header-info').textContent = `${conv.provider}/${conv.model}${conv.title ? ' — ' + conv.title : ''}`;
+    }
+    try {
+        const res = await api(`/api/llm/conversations/${id}`);
+        const data = await res.json();
+        renderMessages(data.messages || []);
+    } catch(e) {
+        document.getElementById('chat-messages').innerHTML = '<div class="chat-empty">Failed to load messages</div>';
+    }
+}
+
+function renderMessages(messages) {
+    const el = document.getElementById('chat-messages');
+    if (!messages.length) {
+        el.innerHTML = '<div class="chat-empty"><div style="font-size:32px;">💬</div><div>Start the conversation by sending a message</div></div>';
+        return;
+    }
+    el.innerHTML = messages.map(m => renderMessage(m)).join('');
+    el.scrollTop = el.scrollHeight;
+}
+
+function renderMessage(m) {
+    const isUser = m.role === 'user';
+    const content = isUser ? esc(m.content) : renderMarkdown(m.content);
+    let meta = '';
+    if (m.provider) meta += `${esc(m.provider)}/${esc(m.model || '')}`;
+    if (m.total_tokens) meta += ` · ${m.total_tokens} tokens`;
+    if (m.created_at) {
+        const d = new Date(m.created_at);
+        meta += ` · ${d.toLocaleTimeString()}`;
+    }
+    const forkBtn = `<button onclick="showForkModal('${m.id}')">Fork from here</button>`;
+    return `
+        <div class="message message-${isUser ? 'user' : 'assistant'}">
+            <div class="message-bubble ${isUser ? '' : 'md-content'}">${content}</div>
+            ${meta ? `<div class="message-meta">${meta}</div>` : ''}
+            <div class="message-actions">${forkBtn}</div>
+        </div>
+    `;
+}
+
+function handleChatKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+async function sendMessage() {
+    if (isSending || !currentConvId) return;
+    const input = document.getElementById('chat-input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    input.style.height = 'auto';
+    isSending = true;
+    document.getElementById('send-btn').disabled = true;
+
+    const messagesEl = document.getElementById('chat-messages');
+    const emptyEl = document.getElementById('chat-empty');
+    if (emptyEl) emptyEl.remove();
+
+    messagesEl.innerHTML += `
+        <div class="message message-user">
+            <div class="message-bubble">${esc(msg)}</div>
+        </div>
+    `;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    const useStream = document.getElementById('stream-toggle').checked;
+
+    if (useStream) {
+        await sendStreaming(msg, messagesEl);
+    } else {
+        await sendRegular(msg, messagesEl);
+    }
+
+    isSending = false;
+    document.getElementById('send-btn').disabled = false;
+}
+
+async function sendRegular(msg, messagesEl) {
+    const loadingId = 'loading-' + Date.now();
+    messagesEl.innerHTML += `<div class="message message-assistant" id="${loadingId}"><div class="message-bubble"><span class="loading-dots">Thinking</span></div></div>`;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    try {
+        const res = await api(`/api/llm/conversations/${currentConvId}/chat`, {
+            method: 'POST',
+            body: JSON.stringify({ message: msg })
+        });
+        const data = await res.json();
+        const el = document.getElementById(loadingId);
+        if (el) {
+            el.outerHTML = renderMessage(data.message);
+            if (data.usage) {
+                messagesEl.lastElementChild.querySelector('.message-meta').innerHTML +=
+                    ` · $${data.usage.cost_usd.toFixed(6)}`;
+            }
+        }
+    } catch(e) {
+        const el = document.getElementById(loadingId);
+        if (el) el.querySelector('.message-bubble').innerHTML = `<span style="color:#ff4757;">Error: ${esc(e.message)}</span>`;
+    }
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    loadMetrics();
+}
+
+async function sendStreaming(msg, messagesEl) {
+    const assistantDiv = document.createElement('div');
+    assistantDiv.className = 'message message-assistant';
+    assistantDiv.innerHTML = '<div class="message-bubble md-content"><span class="loading-dots">Thinking</span></div><div class="message-meta"></div><div class="message-actions"></div>';
+    messagesEl.appendChild(assistantDiv);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    const bubble = assistantDiv.querySelector('.message-bubble');
+    const metaEl = assistantDiv.querySelector('.message-meta');
+    const actionsEl = assistantDiv.querySelector('.message-actions');
+    let fullContent = '';
+
+    try {
+        const res = await fetch(`/api/llm/conversations/${currentConvId}/stream`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg })
+        });
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new Error(text || `HTTP ${res.status}`);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                if (!line.startsWith('data:')) continue;
+                const jsonStr = line.slice(5).trim();
+                if (!jsonStr) continue;
+                try {
+                    const evt = JSON.parse(jsonStr);
+                    if (evt.type === 'chunk') {
+                        fullContent += evt.text;
+                        bubble.innerHTML = renderMarkdown(fullContent);
+                        messagesEl.scrollTop = messagesEl.scrollHeight;
+                    } else if (evt.type === 'done') {
+                        if (evt.usage) {
+                            metaEl.textContent = `${evt.usage.total_tokens} tokens · $${evt.usage.cost_usd.toFixed(6)}`;
+                        }
+                    } else if (evt.type === 'error') {
+                        bubble.innerHTML = `<span style="color:#ff4757;">Error: ${esc(evt.message)}</span>`;
+                    }
+                } catch(pe) {}
+            }
+        }
+
+        if (!fullContent && bubble.querySelector('.loading-dots')) {
+            bubble.innerHTML = '<span style="color:#6b6f82;">No response received</span>';
+        }
+    } catch(e) {
+        bubble.innerHTML = `<span style="color:#ff4757;">Stream error: ${esc(e.message)}</span>`;
+    }
+
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    loadMetrics();
+    loadConversations();
+}
+
+function showForkModal(messageId) {
+    document.getElementById('fork-message-id').value = messageId;
+    updateForkModels();
+    document.getElementById('fork-modal').classList.add('active');
+}
+
+async function doFork() {
+    const messageId = document.getElementById('fork-message-id').value;
+    const newProvider = document.getElementById('fork-provider').value;
+    const newModel = document.getElementById('fork-model').value;
+    try {
+        const res = await api(`/api/llm/conversations/${currentConvId}/fork`, {
+            method: 'POST',
+            body: JSON.stringify({ message_id: messageId, new_provider: newProvider, new_model: newModel })
+        });
+        const newConv = await res.json();
+        closeModal('fork-modal');
+        await loadConversations();
+        selectConversation(newConv.id);
+    } catch(e) { alert('Fork failed: ' + e.message); }
+}
+
+function toggleCompareMode() {
+    const on = document.getElementById('compare-mode-toggle').checked;
+    document.getElementById('chat-panel').style.display = on ? 'none' : 'flex';
+    document.getElementById('compare-panel').classList.toggle('active', on);
+    if (on) updateCompareModels();
+}
+
+function addCompareTarget() {
+    const provider = document.getElementById('compare-provider').value;
+    const model = document.getElementById('compare-model').value;
+    if (compareTargets.some(t => t.provider === provider && t.model === model)) return;
+    compareTargets.push({ provider, model });
+    renderCompareTargets();
+}
+
+function removeCompareTarget(idx) {
+    compareTargets.splice(idx, 1);
+    renderCompareTargets();
+}
+
+function renderCompareTargets() {
+    document.getElementById('compare-targets').innerHTML = compareTargets.map((t, i) =>
+        `<div class="compare-target"><span>${esc(t.provider)}/${esc(t.model)}</span><button onclick="removeCompareTarget(${i})">✕</button></div>`
+    ).join('');
+}
+
+async function runCompare() {
+    const msg = document.getElementById('compare-input').value.trim();
+    if (!msg || !compareTargets.length) return alert('Add targets and enter a prompt');
+    document.getElementById('compare-btn').disabled = true;
+    document.getElementById('compare-results').innerHTML = '<div class="chat-empty" style="width:100%;"><span class="loading-dots">Comparing</span></div>';
+
+    try {
+        const res = await api('/api/llm/compare', {
+            method: 'POST',
+            body: JSON.stringify({ message: msg, targets: compareTargets })
+        });
+        const data = await res.json();
+        renderCompareResults(data.results || []);
+    } catch(e) {
+        document.getElementById('compare-results').innerHTML = `<div class="chat-empty" style="width:100%;color:#ff4757;">Error: ${esc(e.message)}</div>`;
+    }
+    document.getElementById('compare-btn').disabled = false;
+    loadMetrics();
+}
+
+function renderCompareResults(results) {
+    document.getElementById('compare-results').innerHTML = results.map(r => `
+        <div class="compare-result-card">
+            <div class="compare-result-header">${esc(r.provider)} / ${esc(r.model)}</div>
+            <div class="compare-result-body md-content">
+                ${r.status === 'success' ? renderMarkdown(r.content) : `<span style="color:#ff4757;">Error: ${esc(r.error || 'Unknown')}</span>`}
+            </div>
+            <div class="compare-result-footer">
+                <span>⏱ ${r.latency_ms}ms</span>
+                ${r.usage ? `<span>🔢 ${r.usage.total_tokens} tokens</span><span>💰 $${r.usage.cost_usd.toFixed(6)}</span>` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+async function loadMetrics() {
+    try {
+        const res = await api('/api/llm/metrics');
+        const data = await res.json();
+        const el = document.getElementById('metrics-area');
+        el.innerHTML = `
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${formatNumber(data.total_tokens)}</div>
+                    <div class="metric-label">Total Tokens</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">$${(data.total_cost_usd || 0).toFixed(4)}</div>
+                    <div class="metric-label">Total Cost</div>
+                </div>
+            </div>
+            ${(data.by_provider || []).length ? '<div class="metric-breakdown">' + data.by_provider.map(p => `
+                <div class="metric-breakdown-item">
+                    <span>${esc(p.provider)}/${esc(p.model)}</span>
+                    <span>${formatNumber(p.total_tokens || 0)} tok · $${parseFloat(p.total_cost || 0).toFixed(4)}</span>
+                </div>
+            `).join('') + '</div>' : ''}
+        `;
+    } catch(e) {
+        document.getElementById('metrics-area').innerHTML = '<div style="font-size:12px;color:#6b6f82;">Unable to load metrics</div>';
+    }
+}
+
+function formatNumber(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return String(n);
+}
+
+function esc(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+}
+
+function renderMarkdown(text) {
+    if (!text) return '';
+    let html = esc(text);
+
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+        const id = 'code-' + Math.random().toString(36).slice(2, 8);
+        return `<pre><code class="lang-${lang}" id="${id}">${code}</code><button class="copy-btn" onclick="copyCode('${id}')">Copy</button></pre>`;
+    });
+
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>');
+    html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = html.replace(/\n/g, '<br>');
+
+    return html;
+}
+
+function copyCode(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    navigator.clipboard.writeText(el.textContent).then(() => {
+        const btn = el.parentElement.querySelector('.copy-btn');
+        if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 1500); }
+    });
+}
+
+function init() {
+    loadPrefs();
+    updateNewConvModels();
+    updateCompareModels();
+    loadKeys();
+    loadConversations();
+    loadMetrics();
+
+    const input = document.getElementById('chat-input');
+    input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    });
+}
+
+init();
+</script>
+</body>
+</html>

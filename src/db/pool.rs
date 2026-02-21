@@ -9,7 +9,8 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
 }
 
 pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
-    let migration_sql = include_str!("../../migrations/001_initial.sql");
+    let migration_001 = include_str!("../../migrations/001_initial.sql");
+    let migration_002 = include_str!("../../migrations/002_llm_gateway.sql");
 
     let has_users = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'users')",
@@ -18,16 +19,31 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
     .await?;
 
     if !has_users {
-        for statement in migration_sql.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
-        tracing::info!("Database migrations applied successfully");
-    } else {
-        tracing::info!("Database already initialized, skipping migrations");
+        run_sql(pool, migration_001).await?;
+        tracing::info!("Migration 001 applied");
     }
 
+    let has_llm_keys = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'llm_provider_keys')",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if !has_llm_keys {
+        run_sql(pool, migration_002).await?;
+        tracing::info!("Migration 002 (LLM gateway) applied");
+    }
+
+    tracing::info!("All migrations up to date");
+    Ok(())
+}
+
+async fn run_sql(pool: &PgPool, sql: &str) -> Result<(), sqlx::Error> {
+    for statement in sql.split(';') {
+        let trimmed = statement.trim();
+        if !trimmed.is_empty() {
+            sqlx::query(trimmed).execute(pool).await?;
+        }
+    }
     Ok(())
 }
