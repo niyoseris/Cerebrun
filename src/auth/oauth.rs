@@ -33,9 +33,27 @@ struct GoogleUserInfo {
 
 use crate::AppState;
 
-pub async fn google_auth(State(state): State<AppState>) -> Result<(HeaderMap, Redirect), AppError> {
+fn get_redirect_uri(headers: &HeaderMap, config: &crate::config::AppConfig) -> String {
+    if let Some(host) = headers.get("host").and_then(|v| v.to_str().ok()) {
+        let scheme = if host.contains("localhost") || host.contains("127.0.0.1") {
+            "http"
+        } else {
+            "https"
+        };
+        format!("{}://{}/auth/google/callback", scheme, host)
+    } else {
+        config.google_redirect_uri.clone()
+    }
+}
+
+pub async fn google_auth(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<(HeaderMap, Redirect), AppError> {
     let csrf_state = generate_random_key("state");
     let state_hash = sha256_hash(&csrf_state);
+
+    let redirect_uri = get_redirect_uri(&headers, &state.config);
 
     sqlx::query(
         "INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ((SELECT id FROM users LIMIT 0), $1, NOW() + INTERVAL '10 minutes') ON CONFLICT DO NOTHING"
@@ -44,23 +62,32 @@ pub async fn google_auth(State(state): State<AppState>) -> Result<(HeaderMap, Re
     .await
     .ok();
 
-    let mut headers = HeaderMap::new();
+    let mut resp_headers = HeaderMap::new();
     let cookie_value = format!(
         "oauth_state={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax",
         csrf_state
     );
-    headers.insert(
+    resp_headers.insert(
         http::header::SET_COOKIE,
         cookie_value.parse().unwrap(),
+    );
+
+    let redirect_cookie = format!(
+        "oauth_redirect_uri={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax",
+        redirect_uri
+    );
+    resp_headers.append(
+        http::header::SET_COOKIE,
+        redirect_cookie.parse().unwrap(),
     );
 
     let auth_url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=openid%20email%20profile&state={}&access_type=offline",
         state.config.google_client_id,
-        urlencoding(&state.config.google_redirect_uri),
+        urlencoding(&redirect_uri),
         csrf_state
     );
-    Ok((headers, Redirect::temporary(&auth_url)))
+    Ok((resp_headers, Redirect::temporary(&auth_url)))
 }
 
 pub async fn google_callback(
@@ -86,13 +113,20 @@ pub async fn google_callback(
         return Err(AppError::OAuth("OAuth state mismatch - possible CSRF attack".to_string()));
     }
 
+    let redirect_uri = cookie_header
+        .split(';')
+        .filter_map(|s| s.trim().strip_prefix("oauth_redirect_uri="))
+        .next()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| get_redirect_uri(&headers, &state.config));
+
     let token_response: GoogleTokenResponse = reqwest::Client::new()
         .post("https://oauth2.googleapis.com/token")
         .form(&[
             ("code", params.code.as_str()),
             ("client_id", state.config.google_client_id.as_str()),
             ("client_secret", state.config.google_client_secret.as_str()),
-            ("redirect_uri", state.config.google_redirect_uri.as_str()),
+            ("redirect_uri", redirect_uri.as_str()),
             ("grant_type", "authorization_code"),
         ])
         .send()
@@ -135,6 +169,10 @@ pub async fn google_callback(
     resp_headers.append(
         http::header::SET_COOKIE,
         "oauth_state=; HttpOnly; Path=/; Max-Age=0".parse().unwrap(),
+    );
+    resp_headers.append(
+        http::header::SET_COOKIE,
+        "oauth_redirect_uri=; HttpOnly; Path=/; Max-Age=0".parse().unwrap(),
     );
 
     Ok((resp_headers, Redirect::temporary("/")))
