@@ -42,4 +42,9 @@ build = ["cargo", "build", "--release"]
 [userenv]
 
 [userenv.shared]
+
+[userenv.development]
 GOOGLE_REDIRECT_URI = "https://18f35d8f-bfce-403e-9f66-d910b0d39a14-00-38my8z0fk4olj.kirk.replit.dev/auth/google/callback"
+
+[userenv.production]
+GOOGLE_REDIRECT_URI = "https://cerebrun.replit.app/auth/google/callback"
