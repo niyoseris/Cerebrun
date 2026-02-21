@@ -7,5 +7,6 @@ pub mod audit;
 pub mod llm_keys;
 pub mod conversations;
 pub mod llm_usage;
+pub mod knowledge;
 
 pub use pool::*;

@@ -34,6 +34,18 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
         tracing::info!("Migration 002 (LLM gateway) applied");
     }
 
+    let migration_003 = include_str!("../../migrations/003_knowledge_base.sql");
+    let has_knowledge = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'knowledge_entries')",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if !has_knowledge {
+        run_sql(pool, migration_003).await?;
+        tracing::info!("Migration 003 (knowledge base) applied");
+    }
+
     tracing::info!("All migrations up to date");
     Ok(())
 }

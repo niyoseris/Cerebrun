@@ -87,6 +87,7 @@
                 <button class="tab" onclick="showTab('context')">Context Layers</button>
                 <button class="tab" onclick="showTab('consent')">Vault Requests</button>
                 <button class="tab" onclick="showTab('audit')">Audit Log</button>
+                <button class="tab" onclick="showTab('knowledge')">Bilgi Merkezi</button>
                 <button class="tab" onclick="showTab('howto')">How to Use</button>
                 <button class="tab" onclick="showTab('settings')">Settings</button>
                 <a href="/chat" class="tab" style="text-decoration:none; background:#2ed573; color:#0f1117; font-weight:600;">LLM Gateway</a>
@@ -384,6 +385,43 @@ curl -X POST \
                 </div>
             </div>
 
+            <div id="tab-knowledge" class="hidden">
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="margin-bottom: 0;">Bilgi Merkezi</h3>
+                        <span id="knowledge-total" style="color: #8b8fa3; font-size: 13px;"></span>
+                    </div>
+                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 16px;">
+                        AI ajanlarınızın kaydettiği proje güncellemeleri, kararlar, öğrenmeler ve notlar burada listelenir.
+                    </p>
+
+                    <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+                        <input type="text" id="knowledge-search" placeholder="Anahtar kelime ara..." style="flex: 1; min-width: 200px; padding: 8px 12px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; color: #e1e5ee; font-size: 13px;" />
+                        <select id="knowledge-category-filter" style="padding: 8px 12px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; color: #e1e5ee; font-size: 13px;">
+                            <option value="">Tüm Kategoriler</option>
+                        </select>
+                        <button class="btn btn-primary btn-sm" onclick="searchKnowledge()">Ara</button>
+                        <button class="btn btn-secondary btn-sm" onclick="loadKnowledge()">Sıfırla</button>
+                    </div>
+
+                    <div id="knowledge-categories" style="display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap;"></div>
+
+                    <div id="knowledge-list"></div>
+
+                    <div id="knowledge-pagination" style="display: flex; justify-content: center; gap: 8px; margin-top: 16px;"></div>
+                </div>
+
+                <div id="knowledge-detail-modal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center;">
+                    <div style="background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 12px; padding: 24px; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 id="knowledge-detail-title" style="color: #7c8aff;"></h3>
+                            <button class="btn btn-secondary btn-sm" onclick="closeKnowledgeDetail()">Kapat</button>
+                        </div>
+                        <div id="knowledge-detail-body"></div>
+                    </div>
+                </div>
+            </div>
+
             <div id="tab-settings" class="hidden">
                 <div class="card">
                     <h3>Data Export (GDPR)</h3>
@@ -426,6 +464,7 @@ curl -X POST \
             if (name === 'audit') loadAudit();
             if (name === 'consent') loadConsents();
             if (name === 'context') loadContext();
+            if (name === 'knowledge') loadKnowledge();
         }
 
         async function loadKeys() {
@@ -593,6 +632,172 @@ curl -X POST \
         async function logout() {
             await fetch('/auth/logout', { method: 'POST' });
             window.location.reload();
+        }
+
+        let knowledgeOffset = 0;
+        const knowledgeLimit = 20;
+        let knowledgeData = [];
+
+        async function loadKnowledge() {
+            document.getElementById('knowledge-search').value = '';
+            document.getElementById('knowledge-category-filter').value = '';
+            knowledgeOffset = 0;
+            await fetchKnowledge();
+        }
+
+        async function searchKnowledge() {
+            knowledgeOffset = 0;
+            await fetchKnowledge();
+        }
+
+        async function fetchKnowledge() {
+            const keyword = document.getElementById('knowledge-search').value.trim();
+            const category = document.getElementById('knowledge-category-filter').value;
+            let url = `/api/knowledge?limit=${knowledgeLimit}&offset=${knowledgeOffset}`;
+            if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+            if (category) url += `&category=${encodeURIComponent(category)}`;
+
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const data = await res.json();
+            knowledgeData = data.entries || [];
+
+            document.getElementById('knowledge-total').textContent = `Toplam: ${data.total} kayıt`;
+
+            const select = document.getElementById('knowledge-category-filter');
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Tüm Kategoriler</option>';
+            (data.categories || []).forEach(c => {
+                select.innerHTML += `<option value="${c.category}" ${c.category === currentVal ? 'selected' : ''}>${c.category} (${c.count})</option>`;
+            });
+
+            const catContainer = document.getElementById('knowledge-categories');
+            catContainer.innerHTML = (data.categories || []).map(c => {
+                const colors = {
+                    'project_update': '#7c8aff', 'code_change': '#2ed573', 'decision': '#ffa502',
+                    'learning': '#ff6b81', 'todo': '#ff4757', 'insight': '#1e90ff',
+                    'architecture': '#a55eea', 'bug_fix': '#ff6348', 'feature': '#2ed573',
+                    'note': '#8b8fa3', 'uncategorized': '#6b6f82'
+                };
+                const color = colors[c.category] || '#7c8aff';
+                return `<span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; background: ${color}1a; color: ${color}; cursor: pointer;" onclick="filterByCategory('${c.category}')">${c.category} (${c.count})</span>`;
+            }).join('');
+
+            renderKnowledgeList();
+            renderKnowledgePagination(data.total);
+        }
+
+        function filterByCategory(cat) {
+            document.getElementById('knowledge-category-filter').value = cat;
+            searchKnowledge();
+        }
+
+        function renderKnowledgeList() {
+            const container = document.getElementById('knowledge-list');
+            if (knowledgeData.length === 0) {
+                container.innerHTML = '<p style="color: #8b8fa3; font-size: 13px; text-align: center; padding: 32px;">Henüz kayıt yok. AI ajanlarınız push_knowledge aracıyla bilgi gönderdiğinde burada görünecek.</p>';
+                return;
+            }
+
+            container.innerHTML = knowledgeData.map(entry => {
+                const colors = {
+                    'project_update': '#7c8aff', 'code_change': '#2ed573', 'decision': '#ffa502',
+                    'learning': '#ff6b81', 'todo': '#ff4757', 'insight': '#1e90ff',
+                    'architecture': '#a55eea', 'bug_fix': '#ff6348', 'feature': '#2ed573',
+                    'note': '#8b8fa3', 'uncategorized': '#6b6f82'
+                };
+                const color = colors[entry.category] || '#7c8aff';
+                const tags = (entry.tags || []).map(t => `<span style="padding: 2px 6px; background: #2a2d3a; border-radius: 4px; font-size: 10px; color: #8b8fa3;">${t}</span>`).join(' ');
+                const date = entry.created_at ? new Date(entry.created_at).toLocaleString() : '';
+                const preview = entry.summary || (entry.content.length > 150 ? entry.content.substring(0, 150) + '...' : entry.content);
+
+                return `
+                <div class="card" style="margin-bottom: 8px; cursor: pointer;" onclick="showKnowledgeDetail('${entry.id}')">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: ${color}1a; color: ${color};">${entry.category}</span>
+                                ${entry.subcategory ? `<span style="color: #6b6f82; font-size: 11px;">${entry.subcategory}</span>` : ''}
+                                ${entry.source_project ? `<span style="color: #7c8aff; font-size: 11px;">&#128193; ${entry.source_project}</span>` : ''}
+                            </div>
+                            <p style="font-size: 13px; color: #e1e5ee; line-height: 1.5; margin-bottom: 6px;">${preview}</p>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                ${tags}
+                                <span style="color: #6b6f82; font-size: 11px; margin-left: auto;">${entry.source_agent ? entry.source_agent + ' | ' : ''}${date}</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-danger btn-sm" style="margin-left: 12px; flex-shrink: 0;" onclick="event.stopPropagation(); deleteKnowledge('${entry.id}')">Sil</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderKnowledgePagination(total) {
+            const container = document.getElementById('knowledge-pagination');
+            if (total <= knowledgeLimit) { container.innerHTML = ''; return; }
+            const pages = Math.ceil(total / knowledgeLimit);
+            const currentPage = Math.floor(knowledgeOffset / knowledgeLimit);
+            let html = '';
+            for (let i = 0; i < pages && i < 10; i++) {
+                html += `<button class="btn btn-sm ${i === currentPage ? 'btn-primary' : 'btn-secondary'}" onclick="goKnowledgePage(${i})">${i + 1}</button>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function goKnowledgePage(page) {
+            knowledgeOffset = page * knowledgeLimit;
+            fetchKnowledge();
+        }
+
+        function showKnowledgeDetail(id) {
+            const entry = knowledgeData.find(e => e.id === id);
+            if (!entry) return;
+
+            const colors = {
+                'project_update': '#7c8aff', 'code_change': '#2ed573', 'decision': '#ffa502',
+                'learning': '#ff6b81', 'todo': '#ff4757', 'insight': '#1e90ff',
+                'architecture': '#a55eea', 'bug_fix': '#ff6348', 'feature': '#2ed573',
+                'note': '#8b8fa3', 'uncategorized': '#6b6f82'
+            };
+            const color = colors[entry.category] || '#7c8aff';
+            const tags = (entry.tags || []).map(t => `<span style="padding: 2px 8px; background: #2a2d3a; border-radius: 4px; font-size: 11px; color: #8b8fa3;">${t}</span>`).join(' ');
+            const date = entry.created_at ? new Date(entry.created_at).toLocaleString() : '';
+
+            document.getElementById('knowledge-detail-title').innerHTML = `<span style="padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; background: ${color}1a; color: ${color}; margin-right: 8px;">${entry.category}</span> ${entry.subcategory || ''}`;
+
+            document.getElementById('knowledge-detail-body').innerHTML = `
+                ${entry.summary ? `<div style="background: #0f1117; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid ${color};"><strong style="color: #8b8fa3; font-size: 12px;">Özet:</strong><br/><span style="font-size: 14px;">${entry.summary}</span></div>` : ''}
+                <div style="margin-bottom: 12px;">
+                    <strong style="color: #8b8fa3; font-size: 12px;">İçerik:</strong>
+                    <pre style="background: #0f1117; padding: 12px; border-radius: 8px; margin-top: 4px; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; line-height: 1.5; border: 1px solid #2a2d3a;">${entry.content}</pre>
+                </div>
+                <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #8b8fa3;">
+                    ${entry.source_project ? `<span>Proje: <strong style="color: #7c8aff;">${entry.source_project}</strong></span>` : ''}
+                    ${entry.source_agent ? `<span>Ajan: <strong style="color: #e1e5ee;">${entry.source_agent}</strong></span>` : ''}
+                    <span>Tarih: ${date}</span>
+                </div>
+                ${tags ? `<div style="margin-top: 12px;">${tags}</div>` : ''}
+            `;
+
+            const modal = document.getElementById('knowledge-detail-modal');
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
+
+        function closeKnowledgeDetail() {
+            const modal = document.getElementById('knowledge-detail-modal');
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
+
+        async function deleteKnowledge(id) {
+            if (!confirm('Bu bilgi kaydını silmek istediğinize emin misiniz?')) return;
+            const res = await fetch(`/api/knowledge/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                fetchKnowledge();
+            } else {
+                alert('Silme işlemi başarısız oldu.');
+            }
         }
 
         init();

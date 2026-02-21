@@ -110,6 +110,45 @@ pub fn list_tools() -> Value {
                     "type": "object",
                     "properties": {}
                 }
+            },
+            {
+                "name": "push_knowledge",
+                "description": "Store a categorized knowledge entry in the user's central Knowledge Base. Use this to record project updates, code changes, decisions, learnings, insights, or any useful information. The agent should categorize the content before sending (e.g., category: 'project_update', 'code_change', 'decision', 'learning', 'todo', 'insight', 'architecture', 'bug_fix', 'feature', 'note'). If no category is provided, it defaults to 'uncategorized'.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content": { "type": "string", "description": "The main knowledge content to store" },
+                        "summary": { "type": "string", "description": "A brief one-line summary of the content (optional but recommended)" },
+                        "category": { "type": "string", "description": "Category: project_update, code_change, decision, learning, todo, insight, architecture, bug_fix, feature, note, or custom" },
+                        "subcategory": { "type": "string", "description": "More specific subcategory (e.g., 'frontend', 'backend', 'database')" },
+                        "tags": { "type": "array", "items": { "type": "string" }, "description": "Tags for filtering (e.g., ['rust', 'auth', 'performance'])" },
+                        "source_project": { "type": "string", "description": "Name of the project this knowledge relates to" }
+                    },
+                    "required": ["content"]
+                }
+            },
+            {
+                "name": "query_knowledge",
+                "description": "Search the user's Knowledge Base. Find past project updates, decisions, code changes, learnings, and insights stored by any agent. Use this when the user references past work (e.g., 'what changes did I make to the auth module?', 'what did I decide about the database schema?').",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "keyword": { "type": "string", "description": "Search keyword to find in content, summary, or raw input" },
+                        "category": { "type": "string", "description": "Filter by category (e.g., 'project_update', 'decision', 'bug_fix')" },
+                        "tag": { "type": "string", "description": "Filter by tag (e.g., 'rust', 'auth')" },
+                        "source_project": { "type": "string", "description": "Filter by project name" },
+                        "limit": { "type": "integer", "description": "Max results (default 20)", "default": 20 },
+                        "offset": { "type": "integer", "description": "Skip first N results for pagination (default 0)", "default": 0 }
+                    }
+                }
+            },
+            {
+                "name": "list_knowledge_categories",
+                "description": "List all knowledge categories with entry counts. Shows what types of knowledge are stored and how many entries exist per category.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
+                }
             }
         ]
     })

@@ -598,6 +598,106 @@ async fn execute_tool(
             }))
         }
 
+        "push_knowledge" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for Knowledge Base".to_string());
+            }
+
+            let content = arguments.get("content").and_then(|v| v.as_str())
+                .ok_or("Missing 'content' argument")?;
+            let summary = arguments.get("summary").and_then(|v| v.as_str());
+            let category = arguments.get("category").and_then(|v| v.as_str()).unwrap_or("uncategorized");
+            let subcategory = arguments.get("subcategory").and_then(|v| v.as_str());
+            let tags: Vec<String> = arguments.get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|t| t.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            let source_project = arguments.get("source_project").and_then(|v| v.as_str());
+
+            let source_agent = Some(agent.api_key.name.as_str());
+
+            let entry = db::knowledge::insert_knowledge(
+                &state.pool, user_id, content, summary, category, subcategory,
+                &tags, source_agent, source_project, None,
+            ).await.map_err(|e| e.to_string())?;
+
+            let meta = json!({ "category": category, "tags": tags, "source_project": source_project });
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_push_knowledge", Some("knowledge"), true, None, None, Some(&meta),
+            ).await;
+
+            Ok(json!({
+                "id": entry.id,
+                "status": "stored",
+                "category": entry.category,
+                "summary": entry.summary,
+                "tags": entry.tags,
+                "source_agent": entry.source_agent,
+                "created_at": entry.created_at,
+            }))
+        }
+
+        "query_knowledge" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for Knowledge Base".to_string());
+            }
+
+            let keyword = arguments.get("keyword").and_then(|v| v.as_str());
+            let category = arguments.get("category").and_then(|v| v.as_str());
+            let tag = arguments.get("tag").and_then(|v| v.as_str());
+            let source_project = arguments.get("source_project").and_then(|v| v.as_str());
+            let limit = arguments.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+            let offset = arguments.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
+
+            let entries = db::knowledge::query_knowledge(
+                &state.pool, user_id, keyword, category, tag, source_project, limit, offset,
+            ).await.map_err(|e| e.to_string())?;
+
+            let results: Vec<Value> = entries.iter().map(|e| {
+                json!({
+                    "id": e.id,
+                    "content": e.content,
+                    "summary": e.summary,
+                    "category": e.category,
+                    "subcategory": e.subcategory,
+                    "tags": e.tags,
+                    "source_agent": e.source_agent,
+                    "source_project": e.source_project,
+                    "created_at": e.created_at,
+                })
+            }).collect();
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_query_knowledge", Some("knowledge"), true, None, None, None,
+            ).await;
+
+            Ok(json!({ "entries": results, "count": results.len() }))
+        }
+
+        "list_knowledge_categories" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for Knowledge Base".to_string());
+            }
+
+            let categories = db::knowledge::list_categories(&state.pool, user_id)
+                .await.map_err(|e| e.to_string())?;
+
+            let total = db::knowledge::count_knowledge(&state.pool, user_id, None, None, None, None)
+                .await.map_err(|e| e.to_string())?;
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_list_knowledge_categories", Some("knowledge"), true, None, None, None,
+            ).await;
+
+            Ok(json!({
+                "categories": categories,
+                "total_entries": total,
+            }))
+        }
+
         _ => Err(format!("Unknown tool: {}", tool_name)),
     }
 }

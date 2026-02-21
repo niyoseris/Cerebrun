@@ -27,24 +27,33 @@ LLM Gateway features:
 - **SSE Streaming:** Real-time token-by-token response streaming
 - **Token Metrics:** Per-request token counting and cost tracking with dashboard
 
+Knowledge Base features:
+- **Agent-driven storage:** AI agents push categorized knowledge entries via MCP
+- **Agent-side categorization:** The agent's own LLM handles categorization (no server-side LLM calls needed)
+- **Categories:** project_update, code_change, decision, learning, todo, insight, architecture, bug_fix, feature, note, or custom
+- **Tagging:** Flexible tag-based filtering
+- **Source tracking:** Which agent and project generated each entry
+- **Dashboard UI:** Bilgi Merkezi tab with search, category filter, detail view, pagination
+
 ## Project Structure
 ```
 src/
 ├── main.rs          - Axum server setup, routing
 ├── config.rs        - Environment configuration
 ├── error.rs         - Error types
-├── models/          - Data types (user, api_key, context layers, llm)
-├── db/              - Database operations (pool, users, api_keys, layers, vault, audit, llm_keys, conversations, llm_usage)
+├── models/          - Data types (user, api_key, context layers, llm, knowledge)
+├── db/              - Database operations (pool, users, api_keys, layers, vault, audit, llm_keys, conversations, llm_usage, knowledge)
 ├── auth/            - Authentication (Google OAuth, sessions, API key middleware)
-├── api/             - REST API handlers (layers, keys, vault, audit, llm)
+├── api/             - REST API handlers (layers, keys, vault, audit, llm, knowledge)
 ├── mcp/             - MCP protocol implementation (server, tools)
 ├── crypto/          - Hashing and vault encryption (SHA-256, AES-256-GCM)
 ├── llm/             - LLM provider clients and pricing (provider, pricing)
 migrations/
 ├── 001_initial.sql  - Core tables
 ├── 002_llm_gateway.sql - LLM gateway tables
+├── 003_knowledge_base.sql - Knowledge base table
 static/dashboard/
-├── index.html       - Management dashboard
+├── index.html       - Management dashboard (includes Bilgi Merkezi tab)
 ├── chat.html        - LLM Gateway chat interface
 ```
 
@@ -73,6 +82,16 @@ static/dashboard/
 - `POST /api/llm/compare` - A/B comparison (multi-LLM parallel)
 - `GET /api/llm/metrics` - Token usage and cost metrics
 
+### Knowledge Base
+- `GET /api/knowledge` - List/search knowledge entries (with query params: keyword, category, tag, source_project)
+- `GET /api/knowledge/:id` - Get specific entry
+- `DELETE /api/knowledge/:id` - Delete entry
+
+### MCP Knowledge Tools
+- `push_knowledge` - Store categorized knowledge entry (agent categorizes using its own LLM)
+- `query_knowledge` - Search knowledge by keyword, category, tag, project
+- `list_knowledge_categories` - List all categories with counts
+
 ## Environment Variables Required
 - `DATABASE_URL` - PostgreSQL connection string (auto-set)
 - `GOOGLE_CLIENT_ID` - Google OAuth client ID
@@ -81,6 +100,7 @@ static/dashboard/
 - `SESSION_SECRET` - Session encryption key
 
 ## Recent Changes
+- 2026-02-21: Knowledge Base feature - Agent-driven knowledge storage with push_knowledge/query_knowledge/list_knowledge_categories MCP tools. Agent-side categorization (no server-side LLM needed). Dashboard UI with Bilgi Merkezi tab: search, category filter, detail modal, pagination, delete.
 - 2026-02-21: Multi-LLM Gateway expansion - BYOK key management, conversation threading, SSE streaming, A/B comparison, thread forking, token metrics/cost tracking, full chat UI at /chat
 - 2026-02-18: Initial implementation of full MCP server with all 4 layers, Google OAuth, API key management, vault consent flow, audit logging, dashboard UI, and MCP protocol support.
 
