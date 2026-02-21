@@ -105,6 +105,6 @@ static/dashboard/
 - 2026-02-18: Initial implementation of full MCP server with all 4 layers, Google OAuth, API key management, vault consent flow, audit logging, dashboard UI, and MCP protocol support.
 
 ## User Preferences
-- Turkish language support preferred for dashboard UI descriptions
+- English language for all UI text (no Turkish)
 - Dark theme (bg #0f1117, cards #1a1d27, accent #7c8aff)
 - Using rustls instead of native-tls (OpenSSL compatibility)

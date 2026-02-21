@@ -87,7 +87,7 @@
                 <button class="tab" onclick="showTab('context')">Context Layers</button>
                 <button class="tab" onclick="showTab('consent')">Vault Requests</button>
                 <button class="tab" onclick="showTab('audit')">Audit Log</button>
-                <button class="tab" onclick="showTab('knowledge')">Bilgi Merkezi</button>
+                <button class="tab" onclick="showTab('knowledge')">Knowledge Base</button>
                 <button class="tab" onclick="showTab('howto')">How to Use</button>
                 <button class="tab" onclick="showTab('settings')">Settings</button>
                 <a href="/chat" class="tab" style="text-decoration:none; background:#2ed573; color:#0f1117; font-weight:600;">LLM Gateway</a>
@@ -95,41 +95,41 @@
 
             <div id="tab-howto" class="hidden">
                 <div class="card">
-                    <h3>User Context MCP: Neler Mümkün?</h3>
+                    <h3>User Context MCP: What's Possible?</h3>
                     <p style="font-size: 15px; color: #8b8fa3; line-height: 1.6; margin-bottom: 20px;">
-                        Bu servis, farklı yapay zeka ajanları (Claude, ChatGPT, Windsurf vb.) arasında ortak bir <strong>"Dijital Hafıza"</strong> ve <strong>"Kimlik Katmanı"</strong> oluşturmanızı sağlar. İşte bu sistemle yapabilecekleriniz:
+                        This service lets you create a shared <strong>"Digital Memory"</strong> and <strong>"Identity Layer"</strong> across different AI agents (Claude, ChatGPT, Windsurf, etc.). Here's what you can do with this system:
                     </p>
 
                     <div class="grid-2">
                         <div class="card" style="background: #0f1117;">
-                            <h4 style="color: #7c8aff; margin-bottom: 8px;">🚀 Kesintisiz Hafıza</h4>
+                            <h4 style="color: #7c8aff; margin-bottom: 8px;">🚀 Seamless Memory</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                Bir ajana anlattığınız projeyi, diğer ajan otomatik olarak bilir. "Nerede kalmıştık?" demenize gerek kalmaz; tüm ajanlar güncel bağlamınıza (Layer 1) erişebilir.
+                                A project you describe to one agent is automatically known by others. No need to say "where were we?" — all agents can access your current context (Layer 1).
                             </p>
                         </div>
                         <div class="card" style="background: #0f1117;">
-                            <h4 style="color: #7c8aff; margin-bottom: 8px;">🛡️ Güvenli Şifre Yönetimi</h4>
+                            <h4 style="color: #7c8aff; margin-bottom: 8px;">🛡️ Secure Secret Management</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                API anahtarlarınızı veya şifrelerinizi her ajana ayrı ayrı vermek yerine Kasa (Layer 3) içinde tutun. Ajan erişmek istediğinde sizden onay gelir, onayladığınızda geçici anahtarla veriyi okur.
+                                Instead of giving your API keys or passwords to each agent separately, store them in the Vault (Layer 3). When an agent needs access, you get a consent request and approve it with a temporary token.
                             </p>
                         </div>
                         <div class="card" style="background: #0f1117;">
-                            <h4 style="color: #7c8aff; margin-bottom: 8px;">🌍 Kişiselleştirilmiş Deneyim</h4>
+                            <h4 style="color: #7c8aff; margin-bottom: 8px;">🌍 Personalized Experience</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                Dil tercihiniz, yazım tarzınız (formal/casual) ve saat diliminiz tüm yapay zekalar için sabittir. Her yeni sohbette bu ayarları tekrar yapmanız gerekmez.
+                                Your language preference, communication style (formal/casual), and timezone are consistent across all AI agents. No need to reconfigure these settings in every new conversation.
                             </p>
                         </div>
                         <div class="card" style="background: #0f1117;">
-                            <h4 style="color: #7c8aff; margin-bottom: 8px;">📊 Denetlenebilir Erişim</h4>
+                            <h4 style="color: #7c8aff; margin-bottom: 8px;">📊 Auditable Access</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                Hangi ajanın hangi verinize ne zaman eriştiğini "Audit Log" üzerinden görebilirsiniz. Verileriniz üzerinde tam kontrol sahibisiniz.
+                                See which agent accessed which data and when through the Audit Log. You have full control over your data.
                             </p>
                         </div>
                     </div>
 
                     <hr style="border: 0; border-top: 1px solid #2a2d3a; margin: 24px 0;">
 
-                    <h3>Kullanım Kılavuzu</h3>
+                    <h3>Usage Guide</h3>
                     
                     <div style="margin-bottom: 20px;">
                         <h4 style="color: #7c8aff; margin-bottom: 8px;">1. Create an API Key</h4>
@@ -203,70 +203,70 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
 
                     <hr style="border: 0; border-top: 1px solid #2a2d3a; margin: 24px 0;">
 
-                    <h3>LLM Gateway MCP Araçları</h3>
+                    <h3>LLM Gateway MCP Tools</h3>
                     <p style="font-size: 14px; color: #8b8fa3; line-height: 1.6; margin-bottom: 16px;">
-                        Windsurf, Claude Desktop veya herhangi bir MCP istemcisi, aşağıdaki araçları kullanarak LLM Gateway'e erişebilir. 
-                        Bu sayede "Dün Gemini'de yaptığım proje" dediğinizde ajan neyden bahsettiğinizi anlayabilir.
+                        Windsurf, Claude Desktop, or any MCP client can access the LLM Gateway using the tools below. 
+                        This way, when you say "the project I worked on in Gemini yesterday," the agent knows what you're referring to.
                     </p>
 
                     <div class="grid-2">
                         <div class="card" style="background: #0f1117;">
                             <h4 style="color: #2ed573; margin-bottom: 8px;">list_conversations</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                Tüm LLM sohbetlerinizi listeler. Provider'a göre filtreleme yapılabilir. Ajan, hangi konuşmalarınız olduğunu görebilir.
+                                Lists all your LLM conversations. Can filter by provider. The agent can see which conversations you have.
                             </p>
                         </div>
                         <div class="card" style="background: #0f1117;">
                             <h4 style="color: #2ed573; margin-bottom: 8px;">get_conversation</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                Belirli bir konuşmanın tüm mesaj geçmişini döndürür. "Dün Gemini ile ne konuştum?" sorusunu yanıtlar.
+                                Returns the full message history of a specific conversation. Answers the question "What did I discuss with Gemini yesterday?"
                             </p>
                         </div>
                         <div class="card" style="background: #0f1117;">
                             <h4 style="color: #2ed573; margin-bottom: 8px;">search_conversations</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                Anahtar kelimeye göre tüm konuşma geçmişinde arama yapar. "Rust macros hakkındaki konuşmamı bul" gibi.
+                                Searches across all conversation history by keyword. For example: "Find my conversation about Rust macros."
                             </p>
                         </div>
                         <div class="card" style="background: #0f1117;">
                             <h4 style="color: #2ed573; margin-bottom: 8px;">chat_with_llm</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                Gateway üzerinden başka bir LLM'e mesaj gönderir. "Bunu Gemini'a sor" dediğinizde ajan bu aracı kullanır.
+                                Sends a message to another LLM through the gateway. When you say "Ask Gemini about this," the agent uses this tool.
                             </p>
                         </div>
                         <div class="card" style="background: #0f1117;">
                             <h4 style="color: #2ed573; margin-bottom: 8px;">fork_conversation</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                Bir konuşmayı belirli bir noktadan çatallayıp farklı bir LLM'e aktarır.
+                                Forks a conversation at a specific point and transfers it to a different LLM.
                             </p>
                         </div>
                         <div class="card" style="background: #0f1117;">
                             <h4 style="color: #2ed573; margin-bottom: 8px;">get_llm_usage</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                Token kullanımı ve maliyet metriklerini döndürür. "Ne kadar harcadım?" sorusunu yanıtlar.
+                                Returns token usage and cost metrics. Answers the question "How much have I spent?"
                             </p>
                         </div>
                     </div>
 
                     <div style="margin-top: 16px;">
-                        <h4 style="color: #7c8aff; margin-bottom: 8px;">Örnek Senaryo: Windsurf'te Kullanım</h4>
+                        <h4 style="color: #7c8aff; margin-bottom: 8px;">Example Scenario: Using with Windsurf</h4>
                         <p style="font-size: 14px; color: #8b8fa3; line-height: 1.6;">
-                            Windsurf'te bir proje üzerinde çalışırken: <em>"Dün Gemini ile tartıştığım veritabanı mimarisini hatırla"</em> dersiniz. 
-                            Windsurf, MCP üzerinden <code>search_conversations</code> aracını çağırır, konuşmanızı bulur ve bağlamı otomatik olarak yükler.
+                            While working on a project in Windsurf, you say: <em>"Recall the database architecture I discussed with Gemini yesterday."</em> 
+                            Windsurf calls the <code>search_conversations</code> tool via MCP, finds your conversation, and automatically loads the context.
                         </p>
                         <pre style="background: #0f1117; padding: 12px; border-radius: 8px; font-size: 12px; margin-top: 8px; border: 1px solid #2a2d3a; overflow-x: auto;">
-# MCP üzerinden konuşma arama
+# Search conversations via MCP
 curl -X POST \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_conversations","arguments":{"query":"veritabanı mimarisi"}}}' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_conversations","arguments":{"query":"database architecture"}}}' \
   https://YOUR_SERVER_URL/mcp
 
-# MCP üzerinden Gemini'a mesaj gönderme
+# Send a message to Gemini via MCP
 curl -X POST \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"chat_with_llm","arguments":{"message":"Bu kodu analiz et","provider":"gemini","model":"gemini-2.0-flash"}}}' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"chat_with_llm","arguments":{"message":"Analyze this code","provider":"gemini","model":"gemini-2.0-flash"}}}' \
   https://YOUR_SERVER_URL/mcp</pre>
                     </div>
                 </div>
@@ -388,20 +388,20 @@ curl -X POST \
             <div id="tab-knowledge" class="hidden">
                 <div class="card">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                        <h3 style="margin-bottom: 0;">Bilgi Merkezi</h3>
+                        <h3 style="margin-bottom: 0;">Knowledge Base</h3>
                         <span id="knowledge-total" style="color: #8b8fa3; font-size: 13px;"></span>
                     </div>
                     <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 16px;">
-                        AI ajanlarınızın kaydettiği proje güncellemeleri, kararlar, öğrenmeler ve notlar burada listelenir.
+                        Project updates, decisions, learnings, and notes stored by your AI agents are listed here.
                     </p>
 
                     <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
-                        <input type="text" id="knowledge-search" placeholder="Anahtar kelime ara..." style="flex: 1; min-width: 200px; padding: 8px 12px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; color: #e1e5ee; font-size: 13px;" />
+                        <input type="text" id="knowledge-search" placeholder="Search by keyword..." style="flex: 1; min-width: 200px; padding: 8px 12px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; color: #e1e5ee; font-size: 13px;" />
                         <select id="knowledge-category-filter" style="padding: 8px 12px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; color: #e1e5ee; font-size: 13px;">
-                            <option value="">Tüm Kategoriler</option>
+                            <option value="">All Categories</option>
                         </select>
-                        <button class="btn btn-primary btn-sm" onclick="searchKnowledge()">Ara</button>
-                        <button class="btn btn-secondary btn-sm" onclick="loadKnowledge()">Sıfırla</button>
+                        <button class="btn btn-primary btn-sm" onclick="searchKnowledge()">Search</button>
+                        <button class="btn btn-secondary btn-sm" onclick="loadKnowledge()">Reset</button>
                     </div>
 
                     <div id="knowledge-categories" style="display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap;"></div>
@@ -415,7 +415,7 @@ curl -X POST \
                     <div style="background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 12px; padding: 24px; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                             <h3 id="knowledge-detail-title" style="color: #7c8aff;"></h3>
-                            <button class="btn btn-secondary btn-sm" onclick="closeKnowledgeDetail()">Kapat</button>
+                            <button class="btn btn-secondary btn-sm" onclick="closeKnowledgeDetail()">Close</button>
                         </div>
                         <div id="knowledge-detail-body"></div>
                     </div>
@@ -662,11 +662,11 @@ curl -X POST \
             const data = await res.json();
             knowledgeData = data.entries || [];
 
-            document.getElementById('knowledge-total').textContent = `Toplam: ${data.total} kayıt`;
+            document.getElementById('knowledge-total').textContent = `Total: ${data.total} entries`;
 
             const select = document.getElementById('knowledge-category-filter');
             const currentVal = select.value;
-            select.innerHTML = '<option value="">Tüm Kategoriler</option>';
+            select.innerHTML = '<option value="">All Categories</option>';
             (data.categories || []).forEach(c => {
                 select.innerHTML += `<option value="${c.category}" ${c.category === currentVal ? 'selected' : ''}>${c.category} (${c.count})</option>`;
             });
@@ -695,7 +695,7 @@ curl -X POST \
         function renderKnowledgeList() {
             const container = document.getElementById('knowledge-list');
             if (knowledgeData.length === 0) {
-                container.innerHTML = '<p style="color: #8b8fa3; font-size: 13px; text-align: center; padding: 32px;">Henüz kayıt yok. AI ajanlarınız push_knowledge aracıyla bilgi gönderdiğinde burada görünecek.</p>';
+                container.innerHTML = '<p style="color: #8b8fa3; font-size: 13px; text-align: center; padding: 32px;">No entries yet. Knowledge will appear here when your AI agents send data using the push_knowledge tool.</p>';
                 return;
             }
 
@@ -726,7 +726,7 @@ curl -X POST \
                                 <span style="color: #6b6f82; font-size: 11px; margin-left: auto;">${entry.source_agent ? entry.source_agent + ' | ' : ''}${date}</span>
                             </div>
                         </div>
-                        <button class="btn btn-danger btn-sm" style="margin-left: 12px; flex-shrink: 0;" onclick="event.stopPropagation(); deleteKnowledge('${entry.id}')">Sil</button>
+                        <button class="btn btn-danger btn-sm" style="margin-left: 12px; flex-shrink: 0;" onclick="event.stopPropagation(); deleteKnowledge('${entry.id}')">Delete</button>
                     </div>
                 </div>`;
             }).join('');
@@ -766,15 +766,15 @@ curl -X POST \
             document.getElementById('knowledge-detail-title').innerHTML = `<span style="padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; background: ${color}1a; color: ${color}; margin-right: 8px;">${entry.category}</span> ${entry.subcategory || ''}`;
 
             document.getElementById('knowledge-detail-body').innerHTML = `
-                ${entry.summary ? `<div style="background: #0f1117; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid ${color};"><strong style="color: #8b8fa3; font-size: 12px;">Özet:</strong><br/><span style="font-size: 14px;">${entry.summary}</span></div>` : ''}
+                ${entry.summary ? `<div style="background: #0f1117; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid ${color};"><strong style="color: #8b8fa3; font-size: 12px;">Summary:</strong><br/><span style="font-size: 14px;">${entry.summary}</span></div>` : ''}
                 <div style="margin-bottom: 12px;">
-                    <strong style="color: #8b8fa3; font-size: 12px;">İçerik:</strong>
+                    <strong style="color: #8b8fa3; font-size: 12px;">Content:</strong>
                     <pre style="background: #0f1117; padding: 12px; border-radius: 8px; margin-top: 4px; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; line-height: 1.5; border: 1px solid #2a2d3a;">${entry.content}</pre>
                 </div>
                 <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #8b8fa3;">
-                    ${entry.source_project ? `<span>Proje: <strong style="color: #7c8aff;">${entry.source_project}</strong></span>` : ''}
-                    ${entry.source_agent ? `<span>Ajan: <strong style="color: #e1e5ee;">${entry.source_agent}</strong></span>` : ''}
-                    <span>Tarih: ${date}</span>
+                    ${entry.source_project ? `<span>Project: <strong style="color: #7c8aff;">${entry.source_project}</strong></span>` : ''}
+                    ${entry.source_agent ? `<span>Agent: <strong style="color: #e1e5ee;">${entry.source_agent}</strong></span>` : ''}
+                    <span>Date: ${date}</span>
                 </div>
                 ${tags ? `<div style="margin-top: 12px;">${tags}</div>` : ''}
             `;
@@ -791,12 +791,12 @@ curl -X POST \
         }
 
         async function deleteKnowledge(id) {
-            if (!confirm('Bu bilgi kaydını silmek istediğinize emin misiniz?')) return;
+            if (!confirm('Are you sure you want to delete this knowledge entry?')) return;
             const res = await fetch(`/api/knowledge/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 fetchKnowledge();
             } else {
-                alert('Silme işlemi başarısız oldu.');
+                alert('Failed to delete the entry.');
             }
         }
 
