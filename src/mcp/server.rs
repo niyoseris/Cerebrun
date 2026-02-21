@@ -2,10 +2,13 @@ use axum::extract::State;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use uuid::Uuid;
 
 use crate::auth::AuthenticatedAgent;
+use crate::crypto::vault as vault_crypto;
 use crate::db;
 use crate::error::AppError;
+use crate::llm::{pricing, provider};
 use crate::models::{Layer0Update, Layer1Update, Layer2Update};
 use crate::AppState;
 
@@ -50,7 +53,7 @@ pub async fn handle_mcp(
                 },
                 "serverInfo": {
                     "name": "user-context-mcp",
-                    "version": "0.1.0"
+                    "version": "0.2.0"
                 }
             })),
             error: None,
@@ -111,6 +114,53 @@ pub async fn handle_mcp(
     Ok(Json(response))
 }
 
+fn build_system_prompt_for_mcp(
+    layer0: Option<&crate::models::Layer0Public>,
+    layer1: Option<&crate::models::Layer1Context>,
+    layer2: Option<&crate::models::Layer2Personal>,
+) -> String {
+    let mut parts = Vec::new();
+
+    if let Some(l0) = layer0 {
+        let mut prefs = Vec::new();
+        if let Some(lang) = &l0.language { prefs.push(format!("Language: {}", lang)); }
+        if let Some(tz) = &l0.timezone { prefs.push(format!("Timezone: {}", tz)); }
+        if let Some(style) = &l0.communication_style { prefs.push(format!("Communication style: {}", style)); }
+        if !prefs.is_empty() { parts.push(format!("[User Preferences]\n{}", prefs.join("\n"))); }
+    }
+
+    if let Some(l1) = layer1 {
+        let mut ctx = Vec::new();
+        if let Some(goals) = &l1.current_goals {
+            if let Some(arr) = goals.as_array() {
+                if !arr.is_empty() {
+                    let g: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+                    ctx.push(format!("Current goals: {}", g.join(", ")));
+                }
+            }
+        }
+        if let Some(memories) = &l1.pinned_memories {
+            if let Some(arr) = memories.as_array() {
+                if !arr.is_empty() {
+                    let m: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+                    ctx.push(format!("Important context: {}", m.join("; ")));
+                }
+            }
+        }
+        if !ctx.is_empty() { parts.push(format!("[Active Context]\n{}", ctx.join("\n"))); }
+    }
+
+    if let Some(l2) = layer2 {
+        let mut personal = Vec::new();
+        if let Some(name) = &l2.display_name { personal.push(format!("Name: {}", name)); }
+        if let Some(loc) = &l2.location { personal.push(format!("Location: {}", loc)); }
+        if !personal.is_empty() { parts.push(format!("[User Identity]\n{}", personal.join("\n"))); }
+    }
+
+    if parts.is_empty() { return String::new(); }
+    format!("You are a helpful assistant. Here is context about the user:\n\n{}", parts.join("\n\n"))
+}
+
 async fn execute_tool(
     state: &AppState,
     agent: &AuthenticatedAgent,
@@ -129,8 +179,7 @@ async fn execute_tool(
             match layer {
                 0 => {
                     let data = db::layers::get_layer0(&state.pool, user_id)
-                        .await
-                        .map_err(|e| e.to_string())?
+                        .await.map_err(|e| e.to_string())?
                         .ok_or("Layer 0 data not found")?;
                     let _ = db::audit::log_access(
                         &state.pool, user_id, Some(agent.api_key.id),
@@ -149,8 +198,7 @@ async fn execute_tool(
                         return Err("No permission for Layer 1".to_string());
                     }
                     let data = db::layers::get_layer1(&state.pool, user_id)
-                        .await
-                        .map_err(|e| e.to_string())?
+                        .await.map_err(|e| e.to_string())?
                         .ok_or("Layer 1 data not found")?;
                     let _ = db::audit::log_access(
                         &state.pool, user_id, Some(agent.api_key.id),
@@ -169,8 +217,7 @@ async fn execute_tool(
                         return Err("No permission for Layer 2".to_string());
                     }
                     let data = db::layers::get_layer2(&state.pool, user_id)
-                        .await
-                        .map_err(|e| e.to_string())?
+                        .await.map_err(|e| e.to_string())?
                         .ok_or("Layer 2 data not found")?;
                     let _ = db::audit::log_access(
                         &state.pool, user_id, Some(agent.api_key.id),
@@ -189,76 +236,40 @@ async fn execute_tool(
             }
         }
         "update_context" => {
-            let layer = arguments
-                .get("layer")
-                .and_then(|v| v.as_i64())
-                .ok_or("Missing 'layer' argument")?;
+            let layer = arguments.get("layer").and_then(|v| v.as_i64()).ok_or("Missing 'layer' argument")?;
             let data = arguments.get("data").ok_or("Missing 'data' argument")?;
 
             match layer {
                 0 => {
-                    let update: Layer0Update = serde_json::from_value(data.clone())
-                        .map_err(|e| format!("Invalid data: {}", e))?;
-                    let result = db::layers::update_layer0(&state.pool, user_id, &update)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let _ = db::audit::log_access(
-                        &state.pool, user_id, Some(agent.api_key.id),
-                        "mcp_update_layer0", Some("0"), true, None, None, None,
-                    ).await;
+                    let update: Layer0Update = serde_json::from_value(data.clone()).map_err(|e| format!("Invalid data: {}", e))?;
+                    let result = db::layers::update_layer0(&state.pool, user_id, &update).await.map_err(|e| e.to_string())?;
+                    let _ = db::audit::log_access(&state.pool, user_id, Some(agent.api_key.id), "mcp_update_layer0", Some("0"), true, None, None, None).await;
                     Ok(json!({"status": "updated", "language": result.language, "timezone": result.timezone}))
                 }
                 1 => {
-                    if !agent.has_permission("layer1") {
-                        return Err("No permission for Layer 1".to_string());
-                    }
-                    let update: Layer1Update = serde_json::from_value(data.clone())
-                        .map_err(|e| format!("Invalid data: {}", e))?;
-                    let _ = db::layers::update_layer1(&state.pool, user_id, &update)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let _ = db::audit::log_access(
-                        &state.pool, user_id, Some(agent.api_key.id),
-                        "mcp_update_layer1", Some("1"), true, None, None, None,
-                    ).await;
+                    if !agent.has_permission("layer1") { return Err("No permission for Layer 1".to_string()); }
+                    let update: Layer1Update = serde_json::from_value(data.clone()).map_err(|e| format!("Invalid data: {}", e))?;
+                    let _ = db::layers::update_layer1(&state.pool, user_id, &update).await.map_err(|e| e.to_string())?;
+                    let _ = db::audit::log_access(&state.pool, user_id, Some(agent.api_key.id), "mcp_update_layer1", Some("1"), true, None, None, None).await;
                     Ok(json!({"status": "updated"}))
                 }
                 2 => {
-                    if !agent.has_permission("layer2") {
-                        return Err("No permission for Layer 2".to_string());
-                    }
-                    let update: Layer2Update = serde_json::from_value(data.clone())
-                        .map_err(|e| format!("Invalid data: {}", e))?;
-                    let _ = db::layers::update_layer2(&state.pool, user_id, &update)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let _ = db::audit::log_access(
-                        &state.pool, user_id, Some(agent.api_key.id),
-                        "mcp_update_layer2", Some("2"), true, None, None, None,
-                    ).await;
+                    if !agent.has_permission("layer2") { return Err("No permission for Layer 2".to_string()); }
+                    let update: Layer2Update = serde_json::from_value(data.clone()).map_err(|e| format!("Invalid data: {}", e))?;
+                    let _ = db::layers::update_layer2(&state.pool, user_id, &update).await.map_err(|e| e.to_string())?;
+                    let _ = db::audit::log_access(&state.pool, user_id, Some(agent.api_key.id), "mcp_update_layer2", Some("2"), true, None, None, None).await;
                     Ok(json!({"status": "updated"}))
                 }
                 _ => Err(format!("Cannot update layer {}", layer)),
             }
         }
         "request_vault_access" => {
-            let reason = arguments
-                .get("reason")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'reason' argument")?;
-            let requested_fields = arguments
-                .get("requested_fields")
-                .ok_or("Missing 'requested_fields' argument")?;
+            let reason = arguments.get("reason").and_then(|v| v.as_str()).ok_or("Missing 'reason' argument")?;
+            let requested_fields = arguments.get("requested_fields").ok_or("Missing 'requested_fields' argument")?;
 
             let consent = db::vault::create_consent_request(
-                &state.pool,
-                user_id,
-                agent.api_key.id,
-                reason,
-                requested_fields,
-            )
-            .await
-            .map_err(|e| e.to_string())?;
+                &state.pool, user_id, agent.api_key.id, reason, requested_fields,
+            ).await.map_err(|e| e.to_string())?;
 
             let _ = db::audit::log_access(
                 &state.pool, user_id, Some(agent.api_key.id),
@@ -271,6 +282,322 @@ async fn execute_tool(
                 "message": "Vault access request sent. User must approve before data can be accessed."
             }))
         }
+
+        "list_conversations" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for conversation history".to_string());
+            }
+
+            let limit = arguments.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+            let provider_filter = arguments.get("provider").and_then(|v| v.as_str());
+
+            let convs = db::conversations::get_recent_conversations(&state.pool, user_id, limit)
+                .await.map_err(|e| e.to_string())?;
+
+            let filtered: Vec<_> = if let Some(prov) = provider_filter {
+                convs.into_iter().filter(|c| c.provider == prov).collect()
+            } else {
+                convs
+            };
+
+            let result: Vec<Value> = filtered.iter().map(|c| {
+                json!({
+                    "id": c.id,
+                    "title": c.title,
+                    "provider": c.provider,
+                    "model": c.model,
+                    "created_at": c.created_at,
+                    "updated_at": c.updated_at,
+                    "forked_from": c.forked_from,
+                })
+            }).collect();
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_list_conversations", Some("llm"), true, None, None, None,
+            ).await;
+
+            Ok(json!({ "conversations": result, "count": result.len() }))
+        }
+
+        "get_conversation" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for conversation history".to_string());
+            }
+
+            let conv_id_str = arguments.get("conversation_id").and_then(|v| v.as_str())
+                .ok_or("Missing 'conversation_id' argument")?;
+            let conv_id: Uuid = conv_id_str.parse().map_err(|_| "Invalid UUID format")?;
+
+            let conv = db::conversations::get_conversation(&state.pool, conv_id, user_id)
+                .await.map_err(|e| e.to_string())?
+                .ok_or("Conversation not found")?;
+
+            let messages = db::conversations::get_messages(&state.pool, conv_id)
+                .await.map_err(|e| e.to_string())?;
+
+            let msg_list: Vec<Value> = messages.iter().map(|m| {
+                json!({
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "provider": m.provider,
+                    "model": m.model,
+                    "tokens": m.total_tokens,
+                    "created_at": m.created_at,
+                })
+            }).collect();
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_read_conversation", Some("llm"), true, None, None, None,
+            ).await;
+
+            Ok(json!({
+                "conversation": {
+                    "id": conv.id,
+                    "title": conv.title,
+                    "provider": conv.provider,
+                    "model": conv.model,
+                    "created_at": conv.created_at,
+                    "updated_at": conv.updated_at,
+                    "forked_from": conv.forked_from,
+                },
+                "messages": msg_list,
+                "message_count": msg_list.len(),
+            }))
+        }
+
+        "search_conversations" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for conversation search".to_string());
+            }
+
+            let query = arguments.get("query").and_then(|v| v.as_str())
+                .ok_or("Missing 'query' argument")?;
+            let provider_filter = arguments.get("provider").and_then(|v| v.as_str());
+            let limit = arguments.get("limit").and_then(|v| v.as_i64()).unwrap_or(5);
+
+            let results = db::conversations::search_conversations(
+                &state.pool, user_id, query, provider_filter, limit,
+            ).await.map_err(|e| e.to_string())?;
+
+            let result_list: Vec<Value> = results.iter().map(|(conv, msgs)| {
+                let matching_msgs: Vec<Value> = msgs.iter()
+                    .filter(|m| m.content.to_lowercase().contains(&query.to_lowercase()))
+                    .take(3)
+                    .map(|m| json!({
+                        "role": m.role,
+                        "content_preview": if m.content.len() > 200 { format!("{}...", &m.content[..200]) } else { m.content.clone() },
+                        "created_at": m.created_at,
+                    }))
+                    .collect();
+
+                json!({
+                    "conversation": {
+                        "id": conv.id,
+                        "title": conv.title,
+                        "provider": conv.provider,
+                        "model": conv.model,
+                        "created_at": conv.created_at,
+                        "updated_at": conv.updated_at,
+                    },
+                    "matching_messages": matching_msgs,
+                    "total_messages": msgs.len(),
+                })
+            }).collect();
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_search_conversations", Some("llm"), true, None, None, None,
+            ).await;
+
+            Ok(json!({ "results": result_list, "count": result_list.len(), "query": query }))
+        }
+
+        "chat_with_llm" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for LLM Gateway".to_string());
+            }
+
+            let message = arguments.get("message").and_then(|v| v.as_str())
+                .ok_or("Missing 'message' argument")?;
+            let prov = arguments.get("provider").and_then(|v| v.as_str())
+                .ok_or("Missing 'provider' argument")?;
+            let mdl = arguments.get("model").and_then(|v| v.as_str())
+                .ok_or("Missing 'model' argument")?;
+            let conv_id_str = arguments.get("conversation_id").and_then(|v| v.as_str());
+            let title = arguments.get("title").and_then(|v| v.as_str());
+
+            let provider_key = db::llm_keys::get_provider_key(&state.pool, user_id, prov)
+                .await.map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("No API key configured for provider: {}. Add one in the dashboard.", prov))?;
+
+            let vault_key = vault_crypto::derive_vault_key(&state.config.session_secret);
+            let api_key = vault_crypto::decrypt_vault_data(&provider_key.encrypted_key, &vault_key)
+                .map_err(|e| format!("Key decryption failed: {}", e))?;
+            let api_key_str = String::from_utf8(api_key).map_err(|e| e.to_string())?;
+
+            let conv_id = if let Some(id_str) = conv_id_str {
+                let id: Uuid = id_str.parse().map_err(|_| "Invalid conversation_id UUID")?;
+                let _ = db::conversations::get_conversation(&state.pool, id, user_id)
+                    .await.map_err(|e| e.to_string())?
+                    .ok_or("Conversation not found")?;
+                id
+            } else {
+                let layer0 = db::layers::get_layer0(&state.pool, user_id).await.map_err(|e| e.to_string())?;
+                let layer1 = db::layers::get_layer1(&state.pool, user_id).await.map_err(|e| e.to_string())?;
+                let layer2 = db::layers::get_layer2(&state.pool, user_id).await.map_err(|e| e.to_string())?;
+                let sys_prompt = build_system_prompt_for_mcp(layer0.as_ref(), layer1.as_ref(), layer2.as_ref());
+
+                let conv = db::conversations::create_conversation(
+                    &state.pool, user_id, prov, mdl,
+                    title.or(Some(&format!("MCP: {}", &message[..message.len().min(50)]))),
+                    if sys_prompt.is_empty() { None } else { Some(&sys_prompt) },
+                    None, None,
+                ).await.map_err(|e| e.to_string())?;
+                conv.id
+            };
+
+            let _ = db::conversations::add_message(
+                &state.pool, conv_id, "user", message, None, None, 0, 0, 0,
+            ).await.map_err(|e| e.to_string())?;
+
+            let history = db::conversations::get_messages(&state.pool, conv_id)
+                .await.map_err(|e| e.to_string())?;
+
+            let conv = db::conversations::get_conversation(&state.pool, conv_id, user_id)
+                .await.map_err(|e| e.to_string())?
+                .ok_or("Conversation disappeared")?;
+
+            let mut llm_messages: Vec<provider::LlmMessage> = Vec::new();
+            if let Some(sys) = &conv.system_prompt {
+                if !sys.is_empty() {
+                    llm_messages.push(provider::LlmMessage { role: "system".to_string(), content: sys.clone() });
+                }
+            }
+            for msg in &history {
+                llm_messages.push(provider::LlmMessage { role: msg.role.clone(), content: msg.content.clone() });
+            }
+
+            let response = provider::call_llm(prov, mdl, &api_key_str, &llm_messages)
+                .await.map_err(|e| format!("LLM call failed: {}", e))?;
+
+            let cost = pricing::calculate_cost(prov, mdl, response.prompt_tokens, response.completion_tokens);
+
+            let assistant_msg = db::conversations::add_message(
+                &state.pool, conv_id, "assistant", &response.content,
+                Some(prov), Some(mdl),
+                response.prompt_tokens, response.completion_tokens, response.total_tokens,
+            ).await.map_err(|e| e.to_string())?;
+
+            let _ = db::llm_usage::record_usage(
+                &state.pool, user_id, Some(conv_id), Some(assistant_msg.id),
+                prov, mdl, response.prompt_tokens, response.completion_tokens,
+                response.total_tokens, cost,
+            ).await;
+
+            let meta = json!({ "provider": prov, "model": mdl, "tokens": response.total_tokens });
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_chat_with_llm", Some("llm"), true, None, None,
+                Some(&meta),
+            ).await;
+
+            Ok(json!({
+                "conversation_id": conv_id,
+                "response": response.content,
+                "provider": prov,
+                "model": mdl,
+                "usage": {
+                    "prompt_tokens": response.prompt_tokens,
+                    "completion_tokens": response.completion_tokens,
+                    "total_tokens": response.total_tokens,
+                    "cost_usd": cost,
+                }
+            }))
+        }
+
+        "fork_conversation" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for conversation forking".to_string());
+            }
+
+            let conv_id_str = arguments.get("conversation_id").and_then(|v| v.as_str())
+                .ok_or("Missing 'conversation_id'")?;
+            let conv_id: Uuid = conv_id_str.parse().map_err(|_| "Invalid conversation_id UUID")?;
+            let msg_id_str = arguments.get("message_id").and_then(|v| v.as_str())
+                .ok_or("Missing 'message_id'")?;
+            let msg_id: Uuid = msg_id_str.parse().map_err(|_| "Invalid message_id UUID")?;
+            let new_provider = arguments.get("new_provider").and_then(|v| v.as_str())
+                .ok_or("Missing 'new_provider'")?;
+            let new_model = arguments.get("new_model").and_then(|v| v.as_str())
+                .ok_or("Missing 'new_model'")?;
+
+            let original = db::conversations::get_conversation(&state.pool, conv_id, user_id)
+                .await.map_err(|e| e.to_string())?
+                .ok_or("Conversation not found")?;
+
+            let messages_to_copy = db::conversations::get_messages_up_to(&state.pool, conv_id, msg_id)
+                .await.map_err(|e| e.to_string())?;
+
+            let layer0 = db::layers::get_layer0(&state.pool, user_id).await.map_err(|e| e.to_string())?;
+            let layer1 = db::layers::get_layer1(&state.pool, user_id).await.map_err(|e| e.to_string())?;
+            let layer2 = db::layers::get_layer2(&state.pool, user_id).await.map_err(|e| e.to_string())?;
+            let sys_prompt = build_system_prompt_for_mcp(layer0.as_ref(), layer1.as_ref(), layer2.as_ref());
+
+            let new_conv = db::conversations::create_conversation(
+                &state.pool, user_id, new_provider, new_model,
+                Some(&format!("Fork: {} -> {}", original.model, new_model)),
+                if sys_prompt.is_empty() { None } else { Some(&sys_prompt) },
+                Some(conv_id), Some(msg_id),
+            ).await.map_err(|e| e.to_string())?;
+
+            for msg in &messages_to_copy {
+                let _ = db::conversations::add_message(
+                    &state.pool, new_conv.id, &msg.role, &msg.content,
+                    msg.provider.as_deref(), msg.model.as_deref(),
+                    msg.prompt_tokens.unwrap_or(0), msg.completion_tokens.unwrap_or(0),
+                    msg.total_tokens.unwrap_or(0),
+                ).await.map_err(|e| e.to_string())?;
+            }
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_fork_conversation", Some("llm"), true, None, None, None,
+            ).await;
+
+            Ok(json!({
+                "new_conversation_id": new_conv.id,
+                "forked_from": conv_id,
+                "fork_point_message_id": msg_id,
+                "provider": new_provider,
+                "model": new_model,
+                "messages_copied": messages_to_copy.len(),
+            }))
+        }
+
+        "get_llm_usage" => {
+            let summary = db::llm_usage::get_usage_summary(&state.pool, user_id)
+                .await.map_err(|e| e.to_string())?;
+
+            let total_tokens: i64 = summary.iter().map(|s| s.total_tokens.unwrap_or(0)).sum();
+            let total_cost: f64 = summary.iter()
+                .map(|s| s.total_cost.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)).unwrap_or(0.0))
+                .sum();
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_get_llm_usage", Some("llm"), true, None, None, None,
+            ).await;
+
+            Ok(json!({
+                "total_tokens": total_tokens,
+                "total_cost_usd": total_cost,
+                "by_provider": summary,
+            }))
+        }
+
         _ => Err(format!("Unknown tool: {}", tool_name)),
     }
 }

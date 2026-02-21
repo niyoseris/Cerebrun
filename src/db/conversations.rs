@@ -137,3 +137,70 @@ pub async fn delete_conversation(
         .await?;
     Ok(result.rows_affected() > 0)
 }
+
+pub async fn search_conversations(
+    pool: &PgPool,
+    user_id: Uuid,
+    query: &str,
+    provider_filter: Option<&str>,
+    limit: i64,
+) -> Result<Vec<(Conversation, Vec<ConversationMessage>)>, sqlx::Error> {
+    let search_pattern = format!("%{}%", query);
+
+    let matching_convs = if let Some(prov) = provider_filter {
+        sqlx::query_as::<_, Conversation>(
+            r#"
+            SELECT DISTINCT c.* FROM conversations c
+            LEFT JOIN conversation_messages m ON m.conversation_id = c.id
+            WHERE c.user_id = $1
+              AND c.provider = $4
+              AND (c.title ILIKE $2 OR m.content ILIKE $2)
+            ORDER BY c.updated_at DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(user_id)
+        .bind(&search_pattern)
+        .bind(limit)
+        .bind(prov)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, Conversation>(
+            r#"
+            SELECT DISTINCT c.* FROM conversations c
+            LEFT JOIN conversation_messages m ON m.conversation_id = c.id
+            WHERE c.user_id = $1
+              AND (c.title ILIKE $2 OR m.content ILIKE $2)
+            ORDER BY c.updated_at DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(user_id)
+        .bind(&search_pattern)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?
+    };
+
+    let mut results = Vec::new();
+    for conv in matching_convs {
+        let messages = get_messages(pool, conv.id).await?;
+        results.push((conv, messages));
+    }
+    Ok(results)
+}
+
+pub async fn get_recent_conversations(
+    pool: &PgPool,
+    user_id: Uuid,
+    limit: i64,
+) -> Result<Vec<Conversation>, sqlx::Error> {
+    sqlx::query_as::<_, Conversation>(
+        "SELECT * FROM conversations WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2",
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}

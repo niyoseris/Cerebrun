@@ -199,6 +199,75 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
                             Once approved, the agent gets a temporary token to read the specific fields you allowed.
                         </p>
                     </div>
+
+                    <hr style="border: 0; border-top: 1px solid #2a2d3a; margin: 24px 0;">
+
+                    <h3>LLM Gateway MCP Araçları</h3>
+                    <p style="font-size: 14px; color: #8b8fa3; line-height: 1.6; margin-bottom: 16px;">
+                        Windsurf, Claude Desktop veya herhangi bir MCP istemcisi, aşağıdaki araçları kullanarak LLM Gateway'e erişebilir. 
+                        Bu sayede "Dün Gemini'de yaptığım proje" dediğinizde ajan neyden bahsettiğinizi anlayabilir.
+                    </p>
+
+                    <div class="grid-2">
+                        <div class="card" style="background: #0f1117;">
+                            <h4 style="color: #2ed573; margin-bottom: 8px;">list_conversations</h4>
+                            <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
+                                Tüm LLM sohbetlerinizi listeler. Provider'a göre filtreleme yapılabilir. Ajan, hangi konuşmalarınız olduğunu görebilir.
+                            </p>
+                        </div>
+                        <div class="card" style="background: #0f1117;">
+                            <h4 style="color: #2ed573; margin-bottom: 8px;">get_conversation</h4>
+                            <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
+                                Belirli bir konuşmanın tüm mesaj geçmişini döndürür. "Dün Gemini ile ne konuştum?" sorusunu yanıtlar.
+                            </p>
+                        </div>
+                        <div class="card" style="background: #0f1117;">
+                            <h4 style="color: #2ed573; margin-bottom: 8px;">search_conversations</h4>
+                            <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
+                                Anahtar kelimeye göre tüm konuşma geçmişinde arama yapar. "Rust macros hakkındaki konuşmamı bul" gibi.
+                            </p>
+                        </div>
+                        <div class="card" style="background: #0f1117;">
+                            <h4 style="color: #2ed573; margin-bottom: 8px;">chat_with_llm</h4>
+                            <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
+                                Gateway üzerinden başka bir LLM'e mesaj gönderir. "Bunu Gemini'a sor" dediğinizde ajan bu aracı kullanır.
+                            </p>
+                        </div>
+                        <div class="card" style="background: #0f1117;">
+                            <h4 style="color: #2ed573; margin-bottom: 8px;">fork_conversation</h4>
+                            <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
+                                Bir konuşmayı belirli bir noktadan çatallayıp farklı bir LLM'e aktarır.
+                            </p>
+                        </div>
+                        <div class="card" style="background: #0f1117;">
+                            <h4 style="color: #2ed573; margin-bottom: 8px;">get_llm_usage</h4>
+                            <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
+                                Token kullanımı ve maliyet metriklerini döndürür. "Ne kadar harcadım?" sorusunu yanıtlar.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 16px;">
+                        <h4 style="color: #7c8aff; margin-bottom: 8px;">Örnek Senaryo: Windsurf'te Kullanım</h4>
+                        <p style="font-size: 14px; color: #8b8fa3; line-height: 1.6;">
+                            Windsurf'te bir proje üzerinde çalışırken: <em>"Dün Gemini ile tartıştığım veritabanı mimarisini hatırla"</em> dersiniz. 
+                            Windsurf, MCP üzerinden <code>search_conversations</code> aracını çağırır, konuşmanızı bulur ve bağlamı otomatik olarak yükler.
+                        </p>
+                        <pre style="background: #0f1117; padding: 12px; border-radius: 8px; font-size: 12px; margin-top: 8px; border: 1px solid #2a2d3a; overflow-x: auto;">
+# MCP üzerinden konuşma arama
+curl -X POST \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_conversations","arguments":{"query":"veritabanı mimarisi"}}}' \
+  https://YOUR_SERVER_URL/mcp
+
+# MCP üzerinden Gemini'a mesaj gönderme
+curl -X POST \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"chat_with_llm","arguments":{"message":"Bu kodu analiz et","provider":"gemini","model":"gemini-2.0-flash"}}}' \
+  https://YOUR_SERVER_URL/mcp</pre>
+                    </div>
                 </div>
             </div>
 
