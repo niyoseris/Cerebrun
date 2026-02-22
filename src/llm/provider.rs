@@ -307,7 +307,7 @@ async fn call_ollama(
     });
 
     let resp = client
-        .post("https://ollama.com/v1/chat/completions")
+        .post("https://api.ollama.com/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .timeout(Duration::from_secs(180))
@@ -397,7 +397,7 @@ async fn get_ollama_embedding(api_key: &str, text: &str) -> Result<EmbeddingResp
     });
 
     let resp = client
-        .post("https://ollama.com/v1/embeddings")
+        .post("https://api.ollama.com/v1/embeddings")
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .timeout(Duration::from_secs(30))
@@ -471,7 +471,7 @@ pub async fn validate_key(provider: &str, api_key: &str) -> Result<bool, String>
         }
         "ollama" => {
             let resp = reqwest::Client::new()
-                .get("https://ollama.com/v1/models")
+                .get("https://api.ollama.com/v1/models")
                 .header("Authorization", format!("Bearer {}", api_key))
                 .timeout(Duration::from_secs(10))
                 .send()
