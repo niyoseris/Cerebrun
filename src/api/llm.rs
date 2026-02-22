@@ -92,37 +92,34 @@ async fn build_cross_conversation_context(
     let mut context = String::new();
     let mut chars_used = 0usize;
 
-    // 1. Direct search: recent messages from OTHER conversations (always works)
     if let Ok(recent_msgs) = db::conversations::get_recent_messages_from_other_conversations(
-        &state.pool, user_id, conv_id, 50
+        &state.pool, user_id, conv_id, 5
     ).await {
-        let mut pairs: Vec<(String, String)> = Vec::new();
-        let mut i = 0;
-        while i < recent_msgs.len() {
-            let msg = &recent_msgs[i];
-            if msg.role == "assistant" && i + 1 < recent_msgs.len() && recent_msgs[i + 1].role == "user" {
-                pairs.push((recent_msgs[i + 1].content.clone(), msg.content.clone()));
-                i += 2;
-            } else if msg.role == "user" {
-                pairs.push((msg.content.clone(), String::new()));
-                i += 1;
-            } else {
-                i += 1;
-            }
+        use std::collections::BTreeMap;
+        let mut by_conv: BTreeMap<Uuid, Vec<&crate::models::ConversationMessage>> = BTreeMap::new();
+        for msg in &recent_msgs {
+            by_conv.entry(msg.conversation_id).or_default().push(msg);
         }
 
-        if !pairs.is_empty() {
+        if !by_conv.is_empty() {
             context.push_str("[Previous Conversations]\n");
-            for (user_msg, assistant_msg) in pairs.iter().take(10) {
-                let pair_text = if assistant_msg.is_empty() {
-                    format!("User: {}\n\n", user_msg)
-                } else {
-                    format!("User: {}\nAssistant: {}\n\n", user_msg, assistant_msg)
-                };
-                if chars_used + pair_text.len() > char_limit { break; }
-                context.push_str(&pair_text);
-                chars_used += pair_text.len();
+            for (_conv_id, msgs) in &by_conv {
+                let last_msgs: Vec<_> = msgs.iter().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect();
+                let mut conv_text = String::from("---\n");
+                for msg in last_msgs {
+                    let role_label = if msg.role == "user" { "User" } else { "Assistant" };
+                    let truncated = if msg.content.chars().count() > 300 {
+                        format!("{}...", msg.content.chars().take(300).collect::<String>())
+                    } else {
+                        msg.content.clone()
+                    };
+                    conv_text.push_str(&format!("{}: {}\n", role_label, truncated));
+                }
+                if chars_used + conv_text.len() > char_limit { break; }
+                context.push_str(&conv_text);
+                chars_used += conv_text.len();
             }
+            context.push('\n');
         }
     }
 

@@ -61,7 +61,7 @@ pub async fn get_embedding_provider(pool: &PgPool) -> String {
         .await
         .ok()
         .flatten()
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .and_then(|v| v.as_str().map(|s| s.trim_matches('"').to_string()))
         .unwrap_or_else(|| "openai".to_string())
 }
 
