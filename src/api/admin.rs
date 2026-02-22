@@ -52,11 +52,13 @@ pub async fn get_settings(
     let auto_embed = db::system::get_setting(&state.pool, "auto_embedding").await?.unwrap_or(json!(true));
     let top_k = db::system::get_setting(&state.pool, "vector_top_k").await?.unwrap_or(json!(5));
     let min_score = db::system::get_setting(&state.pool, "vector_min_score").await?.unwrap_or(json!(0.7));
+    let embed_provider = db::system::get_setting(&state.pool, "embedding_provider").await?.unwrap_or(json!("openai"));
     
     Ok(Json(json!({ 
         "auto_embedding": auto_embed,
         "vector_top_k": top_k,
-        "vector_min_score": min_score
+        "vector_min_score": min_score,
+        "embedding_provider": embed_provider
     })))
 }
 

@@ -482,25 +482,32 @@ curl -X POST \
                     </table>
                 </div>
                 
-                <div class="card">
-                    <h3>System Settings</h3>
-                    <div class="form-group">
-                        <label class="checkbox-group">
-                            <input type="checkbox" id="admin-setting-auto-embed" onchange="updateAdminSetting('auto_embedding', this.checked)">
-                            Global Auto-Embedding enabled
-                        </label>
-                    </div>
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label>Vector Search Top-K</label>
-                            <input type="number" id="admin-setting-top-k" value="5" min="1" max="20" onchange="updateAdminSetting('vector_top_k', parseInt(this.value))">
-                        </div>
-                        <div class="form-group">
-                            <label>Min Similarity Score (0.0 - 1.0)</label>
-                            <input type="number" id="admin-setting-min-score" value="0.7" min="0" max="1" step="0.05" onchange="updateAdminSetting('vector_min_score', parseFloat(this.value))">
-                        </div>
-                    </div>
-                </div>
+                                <div class="card">
+                                    <h3>Vector DB Settings</h3>
+                                    <div class="form-group">
+                                        <label>Embedding Provider</label>
+                                        <select id="admin-setting-embed-provider" onchange="updateAdminSetting('embedding_provider', this.value)">
+                                            <option value="openai">OpenAI (text-embedding-3-small)</option>
+                                            <option value="ollama">Ollama Cloud (nomic-embed-text)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="checkbox-group">
+                                            <input type="checkbox" id="admin-setting-auto-embed" onchange="updateAdminSetting('auto_embedding', this.checked)" />
+                                            Auto-embedding (Context & Knowledge)
+                                        </label>
+                                    </div>
+                                    <div class="grid-2">
+                                        <div class="form-group">
+                                            <label>Vector Search Top-K</label>
+                                            <input type="number" id="admin-setting-top-k" value="5" min="1" max="20" onchange="updateAdminSetting('vector_top_k', parseInt(this.value))" />
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Min Similarity Score (0.0 - 1.0)</label>
+                                            <input type="number" id="admin-setting-min-score" value="0.7" min="0" max="1" step="0.05" onchange="updateAdminSetting('vector_min_score', parseFloat(this.value))" />
+                                        </div>
+                                    </div>
+                                </div>
             </div>
 
             <div id="tab-settings" class="hidden">
@@ -652,6 +659,9 @@ curl -X POST \
             }
             if (document.getElementById('admin-setting-min-score')) {
                 document.getElementById('admin-setting-min-score').value = settings.vector_min_score || 0.7;
+            }
+            if (document.getElementById('admin-setting-embed-provider')) {
+                document.getElementById('admin-setting-embed-provider').value = settings.embedding_provider || 'openai';
             }
         }
 

@@ -56,6 +56,15 @@ pub async fn is_auto_embedding_enabled(pool: &PgPool) -> bool {
         .unwrap_or(true)
 }
 
+pub async fn get_embedding_provider(pool: &PgPool) -> String {
+    get_setting(pool, "embedding_provider")
+        .await
+        .ok()
+        .flatten()
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "openai".to_string())
+}
+
 pub async fn set_setting(pool: &PgPool, key: &str, value: serde_json::Value) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO system_settings (key, value, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()"
