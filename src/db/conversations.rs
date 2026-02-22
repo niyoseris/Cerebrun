@@ -204,3 +204,26 @@ pub async fn get_recent_conversations(
     .fetch_all(pool)
     .await
 }
+
+pub async fn get_recent_messages_from_other_conversations(
+    pool: &PgPool,
+    user_id: Uuid,
+    current_conv_id: Uuid,
+    limit: i64,
+) -> Result<Vec<ConversationMessage>, sqlx::Error> {
+    sqlx::query_as::<_, ConversationMessage>(
+        r#"
+        SELECT m.* FROM conversation_messages m
+        JOIN conversations c ON c.id = m.conversation_id
+        WHERE c.user_id = $1
+          AND m.conversation_id != $2
+        ORDER BY m.created_at DESC
+        LIMIT $3
+        "#,
+    )
+    .bind(user_id)
+    .bind(current_conv_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}

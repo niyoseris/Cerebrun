@@ -76,6 +76,86 @@ pub fn decrypt_provider_key(state: &AppState, encrypted: &[u8]) -> Result<String
     String::from_utf8(decrypted).map_err(|e| AppError::Internal(e.to_string()))
 }
 
+async fn build_cross_conversation_context(
+    state: &AppState,
+    user_id: Uuid,
+    conv_id: Uuid,
+    message: &str,
+    inject_context: bool,
+    token_budget: i32,
+) -> String {
+    if !inject_context {
+        return String::new();
+    }
+
+    let char_limit = (token_budget as usize) * 4;
+    let mut context = String::new();
+    let mut chars_used = 0usize;
+
+    // 1. Direct search: recent messages from OTHER conversations (always works)
+    if let Ok(recent_msgs) = db::conversations::get_recent_messages_from_other_conversations(
+        &state.pool, user_id, conv_id, 50
+    ).await {
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        let mut i = 0;
+        while i < recent_msgs.len() {
+            let msg = &recent_msgs[i];
+            if msg.role == "assistant" && i + 1 < recent_msgs.len() && recent_msgs[i + 1].role == "user" {
+                pairs.push((recent_msgs[i + 1].content.clone(), msg.content.clone()));
+                i += 2;
+            } else if msg.role == "user" {
+                pairs.push((msg.content.clone(), String::new()));
+                i += 1;
+            } else {
+                i += 1;
+            }
+        }
+
+        if !pairs.is_empty() {
+            context.push_str("[Previous Conversations]\n");
+            for (user_msg, assistant_msg) in pairs.iter().take(10) {
+                let pair_text = if assistant_msg.is_empty() {
+                    format!("User: {}\n\n", user_msg)
+                } else {
+                    format!("User: {}\nAssistant: {}\n\n", user_msg, assistant_msg)
+                };
+                if chars_used + pair_text.len() > char_limit { break; }
+                context.push_str(&pair_text);
+                chars_used += pair_text.len();
+            }
+        }
+    }
+
+    // 2. Vector search: knowledge base and context layers (when embeddings available)
+    if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(state, user_id).await {
+        if let Ok(query_resp) = provider::get_embedding(&emb_provider, &emb_key, message).await {
+            if let Ok(knowledge_results) = db::embeddings::search_similar_knowledge(
+                &state.pool, user_id, &query_resp.embedding, 5, 0.5
+            ).await {
+                for k in knowledge_results {
+                    let entry = format!("[Knowledge: {}] {}\n", k.category, k.content);
+                    if chars_used + entry.len() > char_limit { break; }
+                    context.push_str(&entry);
+                    chars_used += entry.len();
+                }
+            }
+
+            if let Ok(context_results) = db::embeddings::search_similar_context(
+                &state.pool, user_id, &query_resp.embedding, 5, 0.5
+            ).await {
+                for c in context_results {
+                    let entry = format!("[Context: {}] {}\n", c.source_type, c.content_text);
+                    if chars_used + entry.len() > char_limit { break; }
+                    context.push_str(&entry);
+                    chars_used += entry.len();
+                }
+            }
+        }
+    }
+
+    context
+}
+
 fn build_system_prompt_layer0_only(layer0: Option<&Layer0Public>) -> String {
     let mut parts = Vec::new();
 
@@ -202,44 +282,12 @@ pub async fn chat(
         &state.pool, conv_id, "user", &req.message, None, None, 0, 0, 0,
     ).await?;
 
-    // Auto-embed user message if enabled
-    if db::system::is_auto_embedding_enabled(&state.pool).await {
-        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(&state, session.user.id).await {
-            if let Ok(resp) = provider::get_embedding(&emb_provider, &emb_key, &req.message).await {
-                let _ = db::embeddings::upsert_context_embedding(
-                    &state.pool, session.user.id, "conversation_message", &conv_id.to_string(), &req.message, &resp.embedding
-                ).await;
-            }
-        }
-    }
-
-    // Semantic search for context injection
-    let mut injected_context = String::new();
-    if conv.inject_context.unwrap_or(true) {
-        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(&state, session.user.id).await {
-            if let Ok(query_resp) = provider::get_embedding(&emb_provider, &emb_key, &req.message).await {
-                let limit = (conv.context_token_budget.unwrap_or(2000) / 100) as i64; // Rough estimate
-                
-                // Search knowledge
-                if let Ok(knowledge_results) = db::embeddings::search_similar_knowledge(
-                    &state.pool, session.user.id, &query_resp.embedding, limit, 0.7
-                ).await {
-                    for k in knowledge_results {
-                        injected_context.push_str(&format!("[Knowledge: {}] {}\n", k.category, k.content));
-                    }
-                }
-                
-                // Search other context (Layer 1-2)
-                if let Ok(context_results) = db::embeddings::search_similar_context(
-                    &state.pool, session.user.id, &query_resp.embedding, limit, 0.7
-                ).await {
-                    for c in context_results {
-                        injected_context.push_str(&format!("[Context: {}] {}\n", c.source_type, c.content_text));
-                    }
-                }
-            }
-        }
-    }
+    // Build cross-conversation memory context
+    let injected_context = build_cross_conversation_context(
+        &state, session.user.id, conv_id, &req.message,
+        conv.inject_context.unwrap_or(true),
+        conv.context_token_budget.unwrap_or(2000),
+    ).await;
 
     let history = db::conversations::get_messages(&state.pool, conv_id).await?;
     let mut llm_messages: Vec<provider::LlmMessage> = Vec::new();
@@ -249,7 +297,7 @@ pub async fn chat(
         if !final_system_prompt.is_empty() {
             final_system_prompt.push_str("\n\n");
         }
-        final_system_prompt.push_str("Relevant context found from your memory and knowledge base:\n");
+        final_system_prompt.push_str("You have memory of previous conversations with this user. Use this information to provide personalized responses:\n\n");
         final_system_prompt.push_str(&injected_context);
     }
 
@@ -282,17 +330,6 @@ pub async fn chat(
         prov, mdl, response.prompt_tokens, response.completion_tokens,
         response.total_tokens,
     ).await;
-
-    // Auto-embed assistant response if enabled
-    if db::system::is_auto_embedding_enabled(&state.pool).await {
-        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(&state, session.user.id).await {
-            if let Ok(resp) = provider::get_embedding(&emb_provider, &emb_key, &response.content).await {
-                let _ = db::embeddings::upsert_context_embedding(
-                    &state.pool, session.user.id, "conversation_message", &format!("{}_assistant", conv_id), &response.content, &resp.embedding
-                ).await;
-            }
-        }
-    }
 
     Ok(Json(ChatResponse {
         message: assistant_msg,
@@ -450,44 +487,12 @@ pub async fn stream_chat(
         &state.pool, conv_id, "user", &req.message, None, None, 0, 0, 0,
     ).await?;
 
-    // Auto-embed user message if enabled
-    if db::system::is_auto_embedding_enabled(&state.pool).await {
-        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(&state, session.user.id).await {
-            if let Ok(resp) = provider::get_embedding(&emb_provider, &emb_key, &req.message).await {
-                let _ = db::embeddings::upsert_context_embedding(
-                    &state.pool, session.user.id, "conversation_message", &conv_id.to_string(), &req.message, &resp.embedding
-                ).await;
-            }
-        }
-    }
-
-    // Semantic search for context injection
-    let mut injected_context = String::new();
-    if conv.inject_context.unwrap_or(true) {
-        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(&state, session.user.id).await {
-            if let Ok(query_resp) = provider::get_embedding(&emb_provider, &emb_key, &req.message).await {
-                let limit = (conv.context_token_budget.unwrap_or(2000) / 100) as i64; // Rough estimate
-                
-                // Search knowledge
-                if let Ok(knowledge_results) = db::embeddings::search_similar_knowledge(
-                    &state.pool, session.user.id, &query_resp.embedding, limit, 0.7
-                ).await {
-                    for k in knowledge_results {
-                        injected_context.push_str(&format!("[Knowledge: {}] {}\n", k.category, k.content));
-                    }
-                }
-                
-                // Search other context (Layer 1-2)
-                if let Ok(context_results) = db::embeddings::search_similar_context(
-                    &state.pool, session.user.id, &query_resp.embedding, limit, 0.7
-                ).await {
-                    for c in context_results {
-                        injected_context.push_str(&format!("[Context: {}] {}\n", c.source_type, c.content_text));
-                    }
-                }
-            }
-        }
-    }
+    // Build cross-conversation memory context
+    let injected_context = build_cross_conversation_context(
+        &state, session.user.id, conv_id, &req.message,
+        conv.inject_context.unwrap_or(true),
+        conv.context_token_budget.unwrap_or(2000),
+    ).await;
 
     let history = db::conversations::get_messages(&state.pool, conv_id).await?;
     let mut llm_messages: Vec<provider::LlmMessage> = Vec::new();
@@ -497,7 +502,7 @@ pub async fn stream_chat(
         if !final_system_prompt.is_empty() {
             final_system_prompt.push_str("\n\n");
         }
-        final_system_prompt.push_str("Relevant context found from your memory and knowledge base:\n");
+        final_system_prompt.push_str("You have memory of previous conversations with this user. Use this information to provide personalized responses:\n\n");
         final_system_prompt.push_str(&injected_context);
     }
 
@@ -517,7 +522,6 @@ pub async fn stream_chat(
 
     let pool = state.pool.clone();
     let user_id = session.user.id;
-    let state_config = state.config.clone();
 
     let stream = async_stream::stream! {
         yield Ok(Event::default().data(json!({"type": "start", "provider": &prov, "model": &mdl}).to_string()));
@@ -542,17 +546,6 @@ pub async fn stream_chat(
                         &prov, &mdl, response.prompt_tokens, response.completion_tokens,
                         response.total_tokens,
                     ).await;
-
-                    // Auto-embed assistant response if enabled (streaming)
-                    if db::system::is_auto_embedding_enabled(&pool).await {
-                        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key_with_pool(&pool, &state_config, user_id).await {
-                            if let Ok(resp) = provider::get_embedding(&emb_provider, &emb_key, &response.content).await {
-                                let _ = db::embeddings::upsert_context_embedding(
-                                    &pool, user_id, "conversation_message", &format!("{}_assistant", conv_id), &response.content, &resp.embedding
-                                ).await;
-                            }
-                        }
-                    }
                 }
 
                 yield Ok(Event::default().data(json!({
