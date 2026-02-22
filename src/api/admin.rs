@@ -50,7 +50,14 @@ pub async fn get_settings(
         return Err(AppError::Forbidden("Admin only".to_string()));
     }
     let auto_embed = db::system::get_setting(&state.pool, "auto_embedding").await?.unwrap_or(json!(true));
-    Ok(Json(json!({ "auto_embedding": auto_embed })))
+    let top_k = db::system::get_setting(&state.pool, "vector_top_k").await?.unwrap_or(json!(5));
+    let min_score = db::system::get_setting(&state.pool, "vector_min_score").await?.unwrap_or(json!(0.7));
+    
+    Ok(Json(json!({ 
+        "auto_embedding": auto_embed,
+        "vector_top_k": top_k,
+        "vector_min_score": min_score
+    })))
 }
 
 pub async fn update_setting(
