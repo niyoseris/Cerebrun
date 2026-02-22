@@ -8,5 +8,6 @@ pub mod llm_keys;
 pub mod conversations;
 pub mod llm_usage;
 pub mod knowledge;
+pub mod embeddings;
 
 pub use pool::*;

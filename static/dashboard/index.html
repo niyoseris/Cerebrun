@@ -97,14 +97,14 @@
                 <div class="card">
                     <h3>User Context MCP: What's Possible?</h3>
                     <p style="font-size: 15px; color: #8b8fa3; line-height: 1.6; margin-bottom: 20px;">
-                        This service lets you create a shared <strong>"Digital Memory"</strong> and <strong>"Identity Layer"</strong> across different AI agents (Claude, ChatGPT, Windsurf, etc.). Here's what you can do with this system:
+                        This service lets you create a shared <strong>"Digital Memory"</strong> and <strong>"Identity Layer"</strong> across different AI agents (Claude, ChatGPT, Windsurf, etc.). Supports <strong>OpenAI (GPT-4.1 series)</strong>, <strong>Gemini (3.x series)</strong>, <strong>Anthropic (Claude 4.x series)</strong>, and <strong>Ollama Cloud</strong> models. Here's what you can do with this system:
                     </p>
 
                     <div class="grid-2">
                         <div class="card" style="background: #0f1117;">
                             <h4 style="color: #7c8aff; margin-bottom: 8px;">🚀 Seamless Memory</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                A project you describe to one agent is automatically known by others. No need to say "where were we?" — all agents can access your current context (Layer 1).
+                                Only <strong>Layer 0 (preferences)</strong> is auto-injected by default. Agents use the <code>search_context</code> tool to semantically search deeper context layers on demand, preventing over-injection of data into conversations.
                             </p>
                         </div>
                         <div class="card" style="background: #0f1117;">
@@ -243,7 +243,13 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
                         <div class="card" style="background: #0f1117;">
                             <h4 style="color: #2ed573; margin-bottom: 8px;">get_llm_usage</h4>
                             <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
-                                Returns token usage and cost metrics. Answers the question "How much have I spent?"
+                                Returns token usage metrics (total tokens and request counts per provider/model). Answers the question "How many tokens have I used?"
+                            </p>
+                        </div>
+                        <div class="card" style="background: #0f1117;">
+                            <h4 style="color: #2ed573; margin-bottom: 8px;">search_context</h4>
+                            <p style="font-size: 13px; color: #8b8fa3; line-height: 1.5;">
+                                Use search_context to semantically search your context and knowledge base before injecting into conversations. This prevents over-injection.
                             </p>
                         </div>
                     </div>
@@ -266,7 +272,7 @@ curl -X POST \
 curl -X POST \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"chat_with_llm","arguments":{"message":"Analyze this code","provider":"gemini","model":"gemini-2.0-flash"}}}' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"chat_with_llm","arguments":{"message":"Analyze this code","provider":"gemini","model":"gemini-3.0-flash"}}}' \
   https://YOUR_SERVER_URL/mcp</pre>
                     </div>
                 </div>
@@ -424,6 +430,38 @@ curl -X POST \
 
             <div id="tab-settings" class="hidden">
                 <div class="card">
+                    <h3>LLM Keys</h3>
+                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">Configure your LLM provider API keys for the gateway.</p>
+                    <div class="form-group">
+                        <label>Provider</label>
+                        <select id="llm-provider">
+                            <option value="openai">OpenAI</option>
+                            <option value="gemini">Gemini</option>
+                            <option value="anthropic">Anthropic</option>
+                            <option value="ollama">Ollama Cloud</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="llm-api-key" placeholder="Enter your provider API key" />
+                    </div>
+                    <button class="btn btn-primary" onclick="saveLLMKey()">Save LLM Key</button>
+                    <div id="llm-key-status" style="margin-top: 12px;"></div>
+                </div>
+                <div class="card">
+                    <h3>Token Metrics</h3>
+                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">View your LLM usage metrics across providers.</p>
+                    <table>
+                        <thead>
+                            <tr><th>Provider</th><th>Model</th><th>Total Tokens</th><th>Request Count</th></tr>
+                        </thead>
+                        <tbody id="token-metrics-table"></tbody>
+                    </table>
+                    <div style="margin-top: 12px;">
+                        <button class="btn btn-secondary btn-sm" onclick="loadTokenMetrics()">Refresh</button>
+                    </div>
+                </div>
+                <div class="card">
                     <h3>Data Export (GDPR)</h3>
                     <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">Download all your data in JSON format.</p>
                     <button class="btn btn-secondary" onclick="exportData()">Export All Data</button>
@@ -465,6 +503,7 @@ curl -X POST \
             if (name === 'consent') loadConsents();
             if (name === 'context') loadContext();
             if (name === 'knowledge') loadKnowledge();
+            if (name === 'settings') loadTokenMetrics();
         }
 
         async function loadKeys() {
@@ -798,6 +837,40 @@ curl -X POST \
             } else {
                 alert('Failed to delete the entry.');
             }
+        }
+
+        async function saveLLMKey() {
+            const provider = document.getElementById('llm-provider').value;
+            const apiKey = document.getElementById('llm-api-key').value;
+            if (!apiKey) return alert('Please enter an API key');
+            const res = await fetch('/api/llm/keys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, api_key: apiKey })
+            });
+            const status = document.getElementById('llm-key-status');
+            if (res.ok) {
+                status.innerHTML = '<div class="alert alert-info">LLM key saved successfully.</div>';
+                document.getElementById('llm-api-key').value = '';
+            } else {
+                status.innerHTML = '<div class="alert alert-warning">Failed to save LLM key.</div>';
+            }
+        }
+
+        async function loadTokenMetrics() {
+            const res = await fetch('/api/llm/usage');
+            if (!res.ok) return;
+            const data = await res.json();
+            const tbody = document.getElementById('token-metrics-table');
+            const entries = data.usage || data || [];
+            tbody.innerHTML = (Array.isArray(entries) ? entries : []).map(e => `
+                <tr>
+                    <td>${e.provider || '-'}</td>
+                    <td>${e.model || '-'}</td>
+                    <td>${e.total_tokens || 0}</td>
+                    <td>${e.request_count || 0}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="4" style="color: #8b8fa3; text-align: center;">No usage data yet.</td></tr>';
         }
 
         init();

@@ -56,6 +56,8 @@ pub struct Conversation {
     pub system_prompt: Option<String>,
     pub forked_from: Option<Uuid>,
     pub fork_point_message_id: Option<Uuid>,
+    pub inject_context: Option<bool>,
+    pub context_token_budget: Option<i32>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -79,6 +81,8 @@ pub struct CreateConversationRequest {
     pub provider: String,
     pub model: String,
     pub title: Option<String>,
+    pub inject_context: Option<bool>,
+    pub context_token_budget: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,7 +123,6 @@ pub struct TokenUsage {
     pub prompt_tokens: i32,
     pub completion_tokens: i32,
     pub total_tokens: i32,
-    pub cost_usd: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -140,7 +143,6 @@ pub struct LlmUsageRecord {
 #[derive(Debug, Serialize)]
 pub struct UsageSummary {
     pub total_tokens: i64,
-    pub total_cost_usd: f64,
     pub by_provider: Vec<ProviderUsage>,
 }
 
@@ -149,6 +151,5 @@ pub struct ProviderUsage {
     pub provider: String,
     pub model: String,
     pub total_tokens: Option<i64>,
-    pub total_cost: Option<rust_decimal::Decimal>,
     pub request_count: Option<i64>,
 }

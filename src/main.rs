@@ -94,6 +94,7 @@ async fn main() {
         .route("/api/llm/conversations/:id/fork", post(api::llm::fork_conversation))
         .route("/api/llm/compare", post(api::llm::compare))
         .route("/api/llm/metrics", get(api::llm::get_usage_metrics))
+        .route("/api/llm/models", get(api::llm::get_models))
         .route("/api/knowledge", get(api::knowledge::list_knowledge))
         .route("/api/knowledge/:id", get(api::knowledge::get_knowledge))
         .route("/api/knowledge/:id", delete(api::knowledge::delete_knowledge))

@@ -1,7 +1,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::models::{LlmUsageRecord, ProviderUsage};
+use crate::models::ProviderUsage;
 
 pub async fn record_usage(
     pool: &PgPool,
@@ -13,12 +13,11 @@ pub async fn record_usage(
     prompt_tokens: i32,
     completion_tokens: i32,
     total_tokens: i32,
-    cost_usd: f64,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         INSERT INTO llm_usage (user_id, conversation_id, message_id, provider, model, prompt_tokens, completion_tokens, total_tokens, cost_usd)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0)
         "#,
     )
     .bind(user_id)
@@ -29,7 +28,6 @@ pub async fn record_usage(
     .bind(prompt_tokens)
     .bind(completion_tokens)
     .bind(total_tokens)
-    .bind(rust_decimal::Decimal::from_f64_retain(cost_usd).unwrap_or_default())
     .execute(pool)
     .await?;
     Ok(())
@@ -43,12 +41,11 @@ pub async fn get_usage_summary(
         r#"
         SELECT provider, model,
                SUM(total_tokens)::bigint as total_tokens,
-               SUM(cost_usd) as total_cost,
                COUNT(*)::bigint as request_count
         FROM llm_usage
         WHERE user_id = $1
         GROUP BY provider, model
-        ORDER BY total_cost DESC NULLS LAST
+        ORDER BY total_tokens DESC NULLS LAST
         "#,
     )
     .bind(user_id)

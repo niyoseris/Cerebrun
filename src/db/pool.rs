@@ -46,6 +46,18 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
         tracing::info!("Migration 003 (knowledge base) applied");
     }
 
+    let migration_004 = include_str!("../../migrations/004_vector_embeddings.sql");
+    let has_context_embeddings = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'context_embeddings')",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if !has_context_embeddings {
+        run_sql(pool, migration_004).await?;
+        tracing::info!("Migration 004 (vector embeddings) applied");
+    }
+
     tracing::info!("All migrations up to date");
     Ok(())
 }

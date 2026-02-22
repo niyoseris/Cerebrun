@@ -8,7 +8,7 @@ use crate::auth::AuthenticatedAgent;
 use crate::crypto::vault as vault_crypto;
 use crate::db;
 use crate::error::AppError;
-use crate::llm::{pricing, provider};
+use crate::llm::provider;
 use crate::models::{Layer0Update, Layer1Update, Layer2Update};
 use crate::AppState;
 
@@ -52,8 +52,8 @@ pub async fn handle_mcp(
                     "tools": { "listChanged": false }
                 },
                 "serverInfo": {
-                    "name": "user-context-mcp",
-                    "version": "0.2.0"
+                    "name": "cerebrun-mcp",
+                    "version": "0.3.0"
                 }
             })),
             error: None,
@@ -114,10 +114,8 @@ pub async fn handle_mcp(
     Ok(Json(response))
 }
 
-fn build_system_prompt_for_mcp(
+fn build_system_prompt_layer0_only(
     layer0: Option<&crate::models::Layer0Public>,
-    layer1: Option<&crate::models::Layer1Context>,
-    layer2: Option<&crate::models::Layer2Personal>,
 ) -> String {
     let mut parts = Vec::new();
 
@@ -129,36 +127,22 @@ fn build_system_prompt_for_mcp(
         if !prefs.is_empty() { parts.push(format!("[User Preferences]\n{}", prefs.join("\n"))); }
     }
 
-    if let Some(l1) = layer1 {
-        let mut ctx = Vec::new();
-        if let Some(goals) = &l1.current_goals {
-            if let Some(arr) = goals.as_array() {
-                if !arr.is_empty() {
-                    let g: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
-                    ctx.push(format!("Current goals: {}", g.join(", ")));
-                }
-            }
-        }
-        if let Some(memories) = &l1.pinned_memories {
-            if let Some(arr) = memories.as_array() {
-                if !arr.is_empty() {
-                    let m: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
-                    ctx.push(format!("Important context: {}", m.join("; ")));
-                }
-            }
-        }
-        if !ctx.is_empty() { parts.push(format!("[Active Context]\n{}", ctx.join("\n"))); }
-    }
-
-    if let Some(l2) = layer2 {
-        let mut personal = Vec::new();
-        if let Some(name) = &l2.display_name { personal.push(format!("Name: {}", name)); }
-        if let Some(loc) = &l2.location { personal.push(format!("Location: {}", loc)); }
-        if !personal.is_empty() { parts.push(format!("[User Identity]\n{}", personal.join("\n"))); }
-    }
-
     if parts.is_empty() { return String::new(); }
     format!("You are a helpful assistant. Here is context about the user:\n\n{}", parts.join("\n\n"))
+}
+
+async fn get_embedding_key(state: &AppState, user_id: Uuid) -> Option<(String, String)> {
+    for prov in &["ollama", "openai"] {
+        if let Ok(Some(key_record)) = db::llm_keys::get_provider_key(&state.pool, user_id, prov).await {
+            let vault_key = vault_crypto::derive_vault_key(&state.config.session_secret);
+            if let Ok(decrypted) = vault_crypto::decrypt_vault_data(&key_record.encrypted_key, &vault_key) {
+                if let Ok(api_key) = String::from_utf8(decrypted) {
+                    return Some((prov.to_string(), api_key));
+                }
+            }
+        }
+    }
+    None
 }
 
 async fn execute_tool(
@@ -249,7 +233,37 @@ async fn execute_tool(
                 1 => {
                     if !agent.has_permission("layer1") { return Err("No permission for Layer 1".to_string()); }
                     let update: Layer1Update = serde_json::from_value(data.clone()).map_err(|e| format!("Invalid data: {}", e))?;
-                    let _ = db::layers::update_layer1(&state.pool, user_id, &update).await.map_err(|e| e.to_string())?;
+                    let result = db::layers::update_layer1(&state.pool, user_id, &update).await.map_err(|e| e.to_string())?;
+
+                    if let Some((emb_provider, emb_key)) = get_embedding_key(state, user_id).await {
+                        let mut texts = Vec::new();
+                        if let Some(goals) = &result.current_goals {
+                            if let Some(arr) = goals.as_array() {
+                                for (i, g) in arr.iter().enumerate() {
+                                    if let Some(s) = g.as_str() {
+                                        texts.push(("layer1".to_string(), format!("goal_{}", i), s.to_string()));
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(memories) = &result.pinned_memories {
+                            if let Some(arr) = memories.as_array() {
+                                for (i, m) in arr.iter().enumerate() {
+                                    if let Some(s) = m.as_str() {
+                                        texts.push(("layer1".to_string(), format!("memory_{}", i), s.to_string()));
+                                    }
+                                }
+                            }
+                        }
+                        for (src_type, src_key, text) in texts {
+                            if let Ok(emb) = provider::get_embedding(&emb_provider, &emb_key, &text).await {
+                                let _ = db::embeddings::upsert_context_embedding(
+                                    &state.pool, user_id, &src_type, &src_key, &text, &emb.embedding,
+                                ).await;
+                            }
+                        }
+                    }
+
                     let _ = db::audit::log_access(&state.pool, user_id, Some(agent.api_key.id), "mcp_update_layer1", Some("1"), true, None, None, None).await;
                     Ok(json!({"status": "updated"}))
                 }
@@ -280,6 +294,79 @@ async fn execute_tool(
                 "request_id": consent.id,
                 "status": "pending",
                 "message": "Vault access request sent. User must approve before data can be accessed."
+            }))
+        }
+
+        "search_context" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for context search".to_string());
+            }
+
+            let query = arguments.get("query").and_then(|v| v.as_str())
+                .ok_or("Missing 'query' argument")?;
+            let limit = arguments.get("limit").and_then(|v| v.as_i64()).unwrap_or(10);
+            let min_similarity = arguments.get("min_similarity").and_then(|v| v.as_f64()).unwrap_or(0.3);
+            let include_knowledge = arguments.get("include_knowledge").and_then(|v| v.as_bool()).unwrap_or(true);
+
+            let (emb_provider, emb_key) = get_embedding_key(state, user_id).await
+                .ok_or("No embedding-capable provider key found. Add an OpenAI or Ollama key first.")?;
+
+            let query_emb = provider::get_embedding(&emb_provider, &emb_key, query)
+                .await
+                .map_err(|e| format!("Embedding generation failed: {}", e))?;
+
+            let mut results = Vec::new();
+
+            let context_results = db::embeddings::search_similar_context(
+                &state.pool, user_id, &query_emb.embedding, limit, min_similarity,
+            ).await.map_err(|e| e.to_string())?;
+
+            for r in &context_results {
+                results.push(json!({
+                    "type": "context",
+                    "source_type": r.source_type,
+                    "source_key": r.source_key,
+                    "content": r.content_text,
+                    "similarity": r.similarity,
+                }));
+            }
+
+            if include_knowledge {
+                let knowledge_results = db::embeddings::search_similar_knowledge(
+                    &state.pool, user_id, &query_emb.embedding, limit, min_similarity,
+                ).await.map_err(|e| e.to_string())?;
+
+                for r in &knowledge_results {
+                    results.push(json!({
+                        "type": "knowledge",
+                        "id": r.id,
+                        "content": r.content,
+                        "summary": r.summary,
+                        "category": r.category,
+                        "tags": r.tags,
+                        "source_project": r.source_project,
+                        "similarity": r.similarity,
+                    }));
+                }
+            }
+
+            results.sort_by(|a, b| {
+                let sa = a["similarity"].as_f64().unwrap_or(0.0);
+                let sb = b["similarity"].as_f64().unwrap_or(0.0);
+                sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_search_context", Some("search"), true, None, None,
+                Some(&json!({"query": query, "results_count": results.len()})),
+            ).await;
+
+            Ok(json!({
+                "results": results,
+                "count": results.len(),
+                "query": query,
+                "embedding_provider": emb_provider,
             }))
         }
 
@@ -446,9 +533,7 @@ async fn execute_tool(
                 id
             } else {
                 let layer0 = db::layers::get_layer0(&state.pool, user_id).await.map_err(|e| e.to_string())?;
-                let layer1 = db::layers::get_layer1(&state.pool, user_id).await.map_err(|e| e.to_string())?;
-                let layer2 = db::layers::get_layer2(&state.pool, user_id).await.map_err(|e| e.to_string())?;
-                let sys_prompt = build_system_prompt_for_mcp(layer0.as_ref(), layer1.as_ref(), layer2.as_ref());
+                let sys_prompt = build_system_prompt_layer0_only(layer0.as_ref());
 
                 let conv = db::conversations::create_conversation(
                     &state.pool, user_id, prov, mdl,
@@ -483,8 +568,6 @@ async fn execute_tool(
             let response = provider::call_llm(prov, mdl, &api_key_str, &llm_messages)
                 .await.map_err(|e| format!("LLM call failed: {}", e))?;
 
-            let cost = pricing::calculate_cost(prov, mdl, response.prompt_tokens, response.completion_tokens);
-
             let assistant_msg = db::conversations::add_message(
                 &state.pool, conv_id, "assistant", &response.content,
                 Some(prov), Some(mdl),
@@ -494,7 +577,7 @@ async fn execute_tool(
             let _ = db::llm_usage::record_usage(
                 &state.pool, user_id, Some(conv_id), Some(assistant_msg.id),
                 prov, mdl, response.prompt_tokens, response.completion_tokens,
-                response.total_tokens, cost,
+                response.total_tokens,
             ).await;
 
             let meta = json!({ "provider": prov, "model": mdl, "tokens": response.total_tokens });
@@ -513,7 +596,6 @@ async fn execute_tool(
                     "prompt_tokens": response.prompt_tokens,
                     "completion_tokens": response.completion_tokens,
                     "total_tokens": response.total_tokens,
-                    "cost_usd": cost,
                 }
             }))
         }
@@ -542,9 +624,7 @@ async fn execute_tool(
                 .await.map_err(|e| e.to_string())?;
 
             let layer0 = db::layers::get_layer0(&state.pool, user_id).await.map_err(|e| e.to_string())?;
-            let layer1 = db::layers::get_layer1(&state.pool, user_id).await.map_err(|e| e.to_string())?;
-            let layer2 = db::layers::get_layer2(&state.pool, user_id).await.map_err(|e| e.to_string())?;
-            let sys_prompt = build_system_prompt_for_mcp(layer0.as_ref(), layer1.as_ref(), layer2.as_ref());
+            let sys_prompt = build_system_prompt_layer0_only(layer0.as_ref());
 
             let new_conv = db::conversations::create_conversation(
                 &state.pool, user_id, new_provider, new_model,
@@ -582,9 +662,6 @@ async fn execute_tool(
                 .await.map_err(|e| e.to_string())?;
 
             let total_tokens: i64 = summary.iter().map(|s| s.total_tokens.unwrap_or(0)).sum();
-            let total_cost: f64 = summary.iter()
-                .map(|s| s.total_cost.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)).unwrap_or(0.0))
-                .sum();
 
             let _ = db::audit::log_access(
                 &state.pool, user_id, Some(agent.api_key.id),
@@ -593,7 +670,6 @@ async fn execute_tool(
 
             Ok(json!({
                 "total_tokens": total_tokens,
-                "total_cost_usd": total_cost,
                 "by_provider": summary,
             }))
         }
@@ -620,6 +696,19 @@ async fn execute_tool(
                 &state.pool, user_id, content, summary, category, subcategory,
                 &tags, source_agent, source_project, None,
             ).await.map_err(|e| e.to_string())?;
+
+            if let Some((emb_provider, emb_key)) = get_embedding_key(state, user_id).await {
+                let embed_text = if let Some(s) = summary {
+                    format!("{}: {}", s, content)
+                } else {
+                    content.to_string()
+                };
+                if let Ok(emb) = provider::get_embedding(&emb_provider, &emb_key, &embed_text).await {
+                    let _ = db::embeddings::update_knowledge_embedding(
+                        &state.pool, entry.id, &emb.embedding,
+                    ).await;
+                }
+            }
 
             let meta = json!({ "category": category, "tags": tags, "source_project": source_project });
             let _ = db::audit::log_access(

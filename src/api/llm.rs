@@ -10,7 +10,7 @@ use crate::auth::SessionUser;
 use crate::crypto::vault as vault_crypto;
 use crate::db;
 use crate::error::AppError;
-use crate::llm::{pricing, provider};
+use crate::llm::provider;
 use crate::models::*;
 use crate::AppState;
 
@@ -76,7 +76,7 @@ fn decrypt_provider_key(state: &AppState, encrypted: &[u8]) -> Result<String, Ap
     String::from_utf8(decrypted).map_err(|e| AppError::Internal(e.to_string()))
 }
 
-fn build_system_prompt(layer0: Option<&Layer0Public>, layer1: Option<&Layer1Context>, layer2: Option<&Layer2Personal>) -> String {
+fn build_system_prompt_layer0_only(layer0: Option<&Layer0Public>) -> String {
     let mut parts = Vec::new();
 
     if let Some(l0) = layer0 {
@@ -95,42 +95,6 @@ fn build_system_prompt(layer0: Option<&Layer0Public>, layer1: Option<&Layer1Cont
         }
     }
 
-    if let Some(l1) = layer1 {
-        let mut ctx = Vec::new();
-        if let Some(goals) = &l1.current_goals {
-            if let Some(arr) = goals.as_array() {
-                if !arr.is_empty() {
-                    let goals_str: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
-                    ctx.push(format!("Current goals: {}", goals_str.join(", ")));
-                }
-            }
-        }
-        if let Some(memories) = &l1.pinned_memories {
-            if let Some(arr) = memories.as_array() {
-                if !arr.is_empty() {
-                    let mem_str: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
-                    ctx.push(format!("Important context: {}", mem_str.join("; ")));
-                }
-            }
-        }
-        if !ctx.is_empty() {
-            parts.push(format!("[Active Context]\n{}", ctx.join("\n")));
-        }
-    }
-
-    if let Some(l2) = layer2 {
-        let mut personal = Vec::new();
-        if let Some(name) = &l2.display_name {
-            personal.push(format!("Name: {}", name));
-        }
-        if let Some(loc) = &l2.location {
-            personal.push(format!("Location: {}", loc));
-        }
-        if !personal.is_empty() {
-            parts.push(format!("[User Identity]\n{}", personal.join("\n")));
-        }
-    }
-
     if parts.is_empty() {
         return String::new();
     }
@@ -143,11 +107,15 @@ pub async fn create_conversation(
     session: SessionUser,
     Json(req): Json<CreateConversationRequest>,
 ) -> Result<Json<Conversation>, AppError> {
-    let layer0 = db::layers::get_layer0(&state.pool, session.user.id).await?;
-    let layer1 = db::layers::get_layer1(&state.pool, session.user.id).await?;
-    let layer2 = db::layers::get_layer2(&state.pool, session.user.id).await?;
+    let inject = req.inject_context.unwrap_or(true);
+    let budget = req.context_token_budget.unwrap_or(2000);
 
-    let system_prompt = build_system_prompt(layer0.as_ref(), layer1.as_ref(), layer2.as_ref());
+    let system_prompt = if inject {
+        let layer0 = db::layers::get_layer0(&state.pool, session.user.id).await?;
+        build_system_prompt_layer0_only(layer0.as_ref())
+    } else {
+        String::new()
+    };
 
     let conv = db::conversations::create_conversation(
         &state.pool,
@@ -160,6 +128,16 @@ pub async fn create_conversation(
         None,
     )
     .await?;
+
+    if inject != true || budget != 2000 {
+        let _ = sqlx::query(
+            "UPDATE conversations SET inject_context = $1, context_token_budget = $2 WHERE id = $3"
+        )
+        .bind(inject)
+        .bind(budget)
+        .execute(&state.pool)
+        .await;
+    }
 
     Ok(Json(conv))
 }
@@ -247,8 +225,6 @@ pub async fn chat(
         .await
         .map_err(|e| AppError::Internal(e))?;
 
-    let cost = pricing::calculate_cost(prov, mdl, response.prompt_tokens, response.completion_tokens);
-
     let assistant_msg = db::conversations::add_message(
         &state.pool, conv_id, "assistant", &response.content,
         Some(prov), Some(mdl),
@@ -258,7 +234,7 @@ pub async fn chat(
     let _ = db::llm_usage::record_usage(
         &state.pool, session.user.id, Some(conv_id), Some(assistant_msg.id),
         prov, mdl, response.prompt_tokens, response.completion_tokens,
-        response.total_tokens, cost,
+        response.total_tokens,
     ).await;
 
     Ok(Json(ChatResponse {
@@ -267,7 +243,6 @@ pub async fn chat(
             prompt_tokens: response.prompt_tokens,
             completion_tokens: response.completion_tokens,
             total_tokens: response.total_tokens,
-            cost_usd: cost,
         },
     }))
 }
@@ -278,9 +253,7 @@ pub async fn compare(
     Json(req): Json<CompareRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let layer0 = db::layers::get_layer0(&state.pool, session.user.id).await?;
-    let layer1 = db::layers::get_layer1(&state.pool, session.user.id).await?;
-    let layer2 = db::layers::get_layer2(&state.pool, session.user.id).await?;
-    let system_prompt = build_system_prompt(layer0.as_ref(), layer1.as_ref(), layer2.as_ref());
+    let system_prompt = build_system_prompt_layer0_only(layer0.as_ref());
 
     let mut results = Vec::new();
 
@@ -309,15 +282,10 @@ pub async fn compare(
 
         match response {
             Ok(resp) => {
-                let cost = pricing::calculate_cost(
-                    &target.provider, &target.model,
-                    resp.prompt_tokens, resp.completion_tokens,
-                );
-
                 let _ = db::llm_usage::record_usage(
                     &state.pool, session.user.id, None, None,
                     &target.provider, &target.model,
-                    resp.prompt_tokens, resp.completion_tokens, resp.total_tokens, cost,
+                    resp.prompt_tokens, resp.completion_tokens, resp.total_tokens,
                 ).await;
 
                 results.push(json!({
@@ -328,7 +296,6 @@ pub async fn compare(
                         "prompt_tokens": resp.prompt_tokens,
                         "completion_tokens": resp.completion_tokens,
                         "total_tokens": resp.total_tokens,
-                        "cost_usd": cost,
                     },
                     "latency_ms": elapsed.as_millis(),
                     "status": "success",
@@ -363,9 +330,7 @@ pub async fn fork_conversation(
     let messages_to_copy = db::conversations::get_messages_up_to(&state.pool, conv_id, req.message_id).await?;
 
     let layer0 = db::layers::get_layer0(&state.pool, session.user.id).await?;
-    let layer1 = db::layers::get_layer1(&state.pool, session.user.id).await?;
-    let layer2 = db::layers::get_layer2(&state.pool, session.user.id).await?;
-    let system_prompt = build_system_prompt(layer0.as_ref(), layer1.as_ref(), layer2.as_ref());
+    let system_prompt = build_system_prompt_layer0_only(layer0.as_ref());
 
     let new_conv = db::conversations::create_conversation(
         &state.pool,
@@ -398,13 +363,9 @@ pub async fn get_usage_metrics(
     let summary = db::llm_usage::get_usage_summary(&state.pool, session.user.id).await?;
 
     let total_tokens: i64 = summary.iter().map(|s| s.total_tokens.unwrap_or(0)).sum();
-    let total_cost: f64 = summary.iter()
-        .map(|s| s.total_cost.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)).unwrap_or(0.0))
-        .sum();
 
     Ok(Json(json!({
         "total_tokens": total_tokens,
-        "total_cost_usd": total_cost,
         "by_provider": summary,
     })))
 }
@@ -452,17 +413,13 @@ pub async fn stream_chat(
     }
 
     let pool = state.pool.clone();
-    let session_secret = state.config.session_secret.clone();
     let user_id = session.user.id;
-    let _ = session_secret;
 
     let stream = async_stream::stream! {
         yield Ok(Event::default().data(json!({"type": "start", "provider": &prov, "model": &mdl}).to_string()));
 
         match provider::call_llm(&prov, &mdl, &api_key, &llm_messages).await {
             Ok(response) => {
-                let cost = pricing::calculate_cost(&prov, &mdl, response.prompt_tokens, response.completion_tokens);
-
                 for chunk in response.content.chars().collect::<Vec<_>>().chunks(10) {
                     let text: String = chunk.iter().collect();
                     yield Ok(Event::default().data(json!({"type": "chunk", "text": text}).to_string()));
@@ -478,7 +435,7 @@ pub async fn stream_chat(
                 let _ = db::llm_usage::record_usage(
                     &pool, user_id, Some(conv_id), None,
                     &prov, &mdl, response.prompt_tokens, response.completion_tokens,
-                    response.total_tokens, cost,
+                    response.total_tokens,
                 ).await;
 
                 yield Ok(Event::default().data(json!({
@@ -487,7 +444,6 @@ pub async fn stream_chat(
                         "prompt_tokens": response.prompt_tokens,
                         "completion_tokens": response.completion_tokens,
                         "total_tokens": response.total_tokens,
-                        "cost_usd": cost,
                     }
                 }).to_string()));
             }
@@ -498,4 +454,15 @@ pub async fn stream_chat(
     };
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
+pub async fn get_models(
+) -> Result<Json<serde_json::Value>, AppError> {
+    let providers = provider::supported_providers();
+    let mut result = serde_json::Map::new();
+    for p in providers {
+        let models = provider::available_models(p);
+        result.insert(p.to_string(), json!(models));
+    }
+    Ok(Json(json!(result)))
 }

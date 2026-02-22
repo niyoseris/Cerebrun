@@ -184,6 +184,7 @@
                             <option value="openai">OpenAI</option>
                             <option value="gemini">Gemini</option>
                             <option value="anthropic">Anthropic</option>
+                            <option value="ollama">Ollama Cloud</option>
                         </select>
                         <select id="compare-model" style="flex:1;padding:6px;background:#0f1117;border:1px solid #2a2d3a;border-radius:6px;color:#e1e5ee;font-size:12px;"></select>
                         <button class="btn btn-secondary btn-sm" onclick="addCompareTarget()">Add</button>
@@ -216,6 +217,7 @@
                                 <option value="openai">OpenAI</option>
                                 <option value="gemini">Gemini</option>
                                 <option value="anthropic">Anthropic</option>
+                                <option value="ollama">Ollama Cloud</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -249,6 +251,7 @@
                     <option value="openai">OpenAI</option>
                     <option value="gemini">Gemini</option>
                     <option value="anthropic">Anthropic</option>
+                    <option value="ollama">Ollama Cloud</option>
                 </select>
             </div>
             <div class="form-group">
@@ -258,6 +261,16 @@
             <div class="form-group">
                 <label>Title (optional)</label>
                 <input type="text" id="new-conv-title" placeholder="My conversation" />
+            </div>
+            <div class="form-group">
+                <label class="toggle-label">
+                    <input type="checkbox" id="new-conv-inject-context" checked onchange="toggleContextBudget()">
+                    Inject user preferences
+                </label>
+                <div id="context-budget-group" style="margin-top:6px;">
+                    <label style="font-size:11px;color:#8b8fa3;">Token budget</label>
+                    <input type="number" id="new-conv-context-budget" value="2000" min="100" max="10000" style="width:100px;" />
+                </div>
             </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeModal('new-conv-modal')">Cancel</button>
@@ -276,6 +289,7 @@
                     <option value="openai">OpenAI</option>
                     <option value="gemini">Gemini</option>
                     <option value="anthropic">Anthropic</option>
+                    <option value="ollama">Ollama Cloud</option>
                 </select>
             </div>
             <div class="form-group">
@@ -292,9 +306,10 @@
 
 <script>
 const MODELS = {
-    openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'o1', 'o1-mini'],
-    gemini: ['gemini-2.5-pro-preview-06-05', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-    anthropic: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest']
+    openai: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o3-pro', 'o4-mini', 'o4-mini-high'],
+    gemini: ['gemini-3.1-pro', 'gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'],
+    anthropic: ['claude-opus-4.6', 'claude-sonnet-4.6', 'claude-haiku-4.5', 'claude-opus-4.5', 'claude-sonnet-4', 'claude-haiku-4'],
+    ollama: ['qwen3-coder:480b-cloud', 'gpt-oss:120b-cloud', 'gpt-oss:20b-cloud', 'glm-4.6:cloud', 'qwen3.5:cloud']
 };
 
 let currentConvId = null;
@@ -427,8 +442,10 @@ async function createConversation() {
     const provider = document.getElementById('new-conv-provider').value;
     const model = document.getElementById('new-conv-model').value;
     const title = document.getElementById('new-conv-title').value.trim() || undefined;
+    const inject_context = document.getElementById('new-conv-inject-context').checked;
+    const context_token_budget = parseInt(document.getElementById('new-conv-context-budget').value) || 2000;
     try {
-        const res = await api('/api/llm/conversations', { method: 'POST', body: JSON.stringify({ provider, model, title }) });
+        const res = await api('/api/llm/conversations', { method: 'POST', body: JSON.stringify({ provider, model, title, inject_context, context_token_budget }) });
         const conv = await res.json();
         closeModal('new-conv-modal');
         document.getElementById('new-conv-title').value = '';
@@ -551,10 +568,6 @@ async function sendRegular(msg, messagesEl) {
         const el = document.getElementById(loadingId);
         if (el) {
             el.outerHTML = renderMessage(data.message);
-            if (data.usage) {
-                messagesEl.lastElementChild.querySelector('.message-meta').innerHTML +=
-                    ` · $${data.usage.cost_usd.toFixed(6)}`;
-            }
         }
     } catch(e) {
         const el = document.getElementById(loadingId);
@@ -613,7 +626,11 @@ async function sendStreaming(msg, messagesEl) {
                         messagesEl.scrollTop = messagesEl.scrollHeight;
                     } else if (evt.type === 'done') {
                         if (evt.usage) {
-                            metaEl.textContent = `${evt.usage.total_tokens} tokens · $${evt.usage.cost_usd.toFixed(6)}`;
+                            let usageParts = [];
+                            if (evt.usage.prompt_tokens !== undefined) usageParts.push(`prompt: ${evt.usage.prompt_tokens}`);
+                            if (evt.usage.completion_tokens !== undefined) usageParts.push(`completion: ${evt.usage.completion_tokens}`);
+                            if (evt.usage.total_tokens !== undefined) usageParts.push(`total: ${evt.usage.total_tokens}`);
+                            metaEl.textContent = usageParts.join(' · ') + ' tokens';
                         }
                     } else if (evt.type === 'error') {
                         bubble.innerHTML = `<span style="color:#ff4757;">Error: ${esc(evt.message)}</span>`;
@@ -711,7 +728,7 @@ function renderCompareResults(results) {
             </div>
             <div class="compare-result-footer">
                 <span>⏱ ${r.latency_ms}ms</span>
-                ${r.usage ? `<span>🔢 ${r.usage.total_tokens} tokens</span><span>💰 $${r.usage.cost_usd.toFixed(6)}</span>` : ''}
+                ${r.usage ? `<span>🔢 ${r.usage.total_tokens} tokens</span>` : ''}
             </div>
         </div>
     `).join('');
@@ -728,15 +745,11 @@ async function loadMetrics() {
                     <div class="metric-value">${formatNumber(data.total_tokens)}</div>
                     <div class="metric-label">Total Tokens</div>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-value">$${(data.total_cost_usd || 0).toFixed(4)}</div>
-                    <div class="metric-label">Total Cost</div>
-                </div>
             </div>
             ${(data.by_provider || []).length ? '<div class="metric-breakdown">' + data.by_provider.map(p => `
                 <div class="metric-breakdown-item">
                     <span>${esc(p.provider)}/${esc(p.model)}</span>
-                    <span>${formatNumber(p.total_tokens || 0)} tok · $${parseFloat(p.total_cost || 0).toFixed(4)}</span>
+                    <span>${formatNumber(p.total_tokens || 0)} tok</span>
                 </div>
             `).join('') + '</div>' : ''}
         `;
@@ -789,6 +802,11 @@ function copyCode(id) {
         const btn = el.parentElement.querySelector('.copy-btn');
         if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 1500); }
     });
+}
+
+function toggleContextBudget() {
+    const checked = document.getElementById('new-conv-inject-context').checked;
+    document.getElementById('context-budget-group').style.display = checked ? 'block' : 'none';
 }
 
 function init() {

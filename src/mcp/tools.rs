@@ -28,6 +28,20 @@ pub fn list_tools() -> Value {
                 }
             },
             {
+                "name": "search_context",
+                "description": "Semantic search across user's context layers and knowledge base using vector embeddings. Use this to find relevant context BEFORE injecting it into conversations. This prevents over-injection by only retrieving context items that are semantically relevant to the current topic. Returns ranked results with similarity scores. Requires an OpenAI or Ollama API key for embedding generation.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "Natural language search query (e.g., 'Rust authentication implementation', 'user preferences for coding style')" },
+                        "limit": { "type": "integer", "description": "Max results to return (default 10)", "default": 10 },
+                        "min_similarity": { "type": "number", "description": "Minimum similarity threshold 0.0-1.0 (default 0.3)", "default": 0.3 },
+                        "include_knowledge": { "type": "boolean", "description": "Also search Knowledge Base entries (default true)", "default": true }
+                    },
+                    "required": ["query"]
+                }
+            },
+            {
                 "name": "request_vault_access",
                 "description": "Request access to vault data (requires user consent)",
                 "inputSchema": {
@@ -41,12 +55,12 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "list_conversations",
-                "description": "List the user's LLM Gateway conversations. Shows recent chat threads with different AI models (OpenAI, Gemini, Anthropic). Use this to see what conversations the user has had.",
+                "description": "List the user's LLM Gateway conversations. Shows recent chat threads with different AI models (OpenAI, Gemini, Anthropic, Ollama). Use this to see what conversations the user has had.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "limit": { "type": "integer", "description": "Max conversations to return (default 20)", "default": 20 },
-                        "provider": { "type": "string", "description": "Filter by provider: openai, gemini, anthropic" }
+                        "provider": { "type": "string", "description": "Filter by provider: openai, gemini, anthropic, ollama" }
                     }
                 }
             },
@@ -63,12 +77,12 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "search_conversations",
-                "description": "Search through all conversation history by keyword. Searches both conversation titles and message content. Use this when the user asks about a past discussion on a topic (e.g., 'find my conversation about Rust macros').",
+                "description": "Search through all conversation history by keyword. Searches both conversation titles and message content.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "query": { "type": "string", "description": "Search keyword or phrase" },
-                        "provider": { "type": "string", "description": "Filter by provider: openai, gemini, anthropic" },
+                        "provider": { "type": "string", "description": "Filter by provider: openai, gemini, anthropic, ollama" },
                         "limit": { "type": "integer", "description": "Max results (default 5)", "default": 5 }
                     },
                     "required": ["query"]
@@ -76,13 +90,13 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "chat_with_llm",
-                "description": "Send a message to an LLM through the Gateway. Creates a new conversation or continues an existing one. The user's context (preferences, goals, identity) is automatically injected. Use this when the user asks you to query another LLM (e.g., 'ask Gemini about this').",
+                "description": "Send a message to an LLM through the Gateway. Creates a new conversation or continues an existing one. Only Layer 0 preferences are auto-injected. Use search_context first to find relevant context, then include it in your message.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "message": { "type": "string", "description": "The message to send to the LLM" },
-                        "provider": { "type": "string", "enum": ["openai", "gemini", "anthropic"], "description": "LLM provider" },
-                        "model": { "type": "string", "description": "Model name (e.g., gpt-4o, gemini-2.0-flash, claude-3-5-sonnet-latest)" },
+                        "provider": { "type": "string", "enum": ["openai", "gemini", "anthropic", "ollama"], "description": "LLM provider" },
+                        "model": { "type": "string", "description": "Model name (e.g., gpt-4.1, gemini-3-flash, claude-sonnet-4.6, gpt-oss:120b-cloud)" },
                         "conversation_id": { "type": "string", "format": "uuid", "description": "Continue an existing conversation (optional)" },
                         "title": { "type": "string", "description": "Title for new conversation (optional)" }
                     },
@@ -91,13 +105,13 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "fork_conversation",
-                "description": "Fork a conversation at a specific message to continue with a different LLM. Copies the conversation history up to that point and creates a new thread with the specified provider/model.",
+                "description": "Fork a conversation at a specific message to continue with a different LLM.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "conversation_id": { "type": "string", "format": "uuid", "description": "Source conversation UUID" },
                         "message_id": { "type": "string", "format": "uuid", "description": "Fork point message UUID" },
-                        "new_provider": { "type": "string", "enum": ["openai", "gemini", "anthropic"] },
+                        "new_provider": { "type": "string", "enum": ["openai", "gemini", "anthropic", "ollama"] },
                         "new_model": { "type": "string", "description": "Model for the new fork" }
                     },
                     "required": ["conversation_id", "message_id", "new_provider", "new_model"]
@@ -105,7 +119,7 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "get_llm_usage",
-                "description": "Get token usage and cost metrics for LLM Gateway. Shows total tokens used, total cost, and breakdown by provider and model.",
+                "description": "Get token usage metrics for LLM Gateway. Shows total tokens used and breakdown by provider and model.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {}
@@ -113,7 +127,7 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "push_knowledge",
-                "description": "Store a categorized knowledge entry in the user's central Knowledge Base. Use this to record project updates, code changes, decisions, learnings, insights, or any useful information. The agent should categorize the content before sending (e.g., category: 'project_update', 'code_change', 'decision', 'learning', 'todo', 'insight', 'architecture', 'bug_fix', 'feature', 'note'). If no category is provided, it defaults to 'uncategorized'.",
+                "description": "Store a categorized knowledge entry in the user's Knowledge Base. Content is automatically vectorized for semantic search. Categories: project_update, code_change, decision, learning, todo, insight, architecture, bug_fix, feature, note.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -129,7 +143,7 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "query_knowledge",
-                "description": "Search the user's Knowledge Base. Find past project updates, decisions, code changes, learnings, and insights stored by any agent. Use this when the user references past work (e.g., 'what changes did I make to the auth module?', 'what did I decide about the database schema?').",
+                "description": "Search the user's Knowledge Base by keyword, category, tag, or project. For semantic search, use search_context instead.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -144,7 +158,7 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "list_knowledge_categories",
-                "description": "List all knowledge categories with entry counts. Shows what types of knowledge are stored and how many entries exist per category.",
+                "description": "List all knowledge categories with entry counts.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {}
