@@ -833,6 +833,17 @@ function toggleContextBudget() {
     document.getElementById('context-budget-group').style.display = checked ? 'block' : 'none';
 }
 
+function toggleTheme() {
+    document.body.classList.toggle('light-theme');
+    localStorage.setItem('theme', document.body.classList.contains('light-theme') ? 'light' : 'dark');
+}
+
+function initTheme() {
+    if (localStorage.getItem('theme') === 'light') {
+        document.body.classList.add('light-theme');
+    }
+}
+
 function init() {
     initTheme();
     loadPrefs();
