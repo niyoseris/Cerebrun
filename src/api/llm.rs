@@ -69,7 +69,7 @@ pub async fn delete_provider_key(
     Ok(Json(json!({"status": "ok"})))
 }
 
-fn decrypt_provider_key(state: &AppState, encrypted: &[u8]) -> Result<String, AppError> {
+pub fn decrypt_provider_key(state: &AppState, encrypted: &[u8]) -> Result<String, AppError> {
     let key = vault_crypto::derive_vault_key(&state.config.session_secret);
     let decrypted = vault_crypto::decrypt_vault_data(encrypted, &key)
         .map_err(|e| AppError::Internal(format!("Decryption failed: {}", e)))?;

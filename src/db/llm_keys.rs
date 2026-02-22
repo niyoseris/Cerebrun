@@ -63,3 +63,15 @@ pub async fn delete_provider_key(
         .await?;
     Ok(result.rows_affected() > 0)
 }
+
+pub async fn get_any_embedding_key(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Option<LlmProviderKey>, sqlx::Error> {
+    // Prefer OpenAI for embeddings, then Ollama
+    let mut key = get_provider_key(pool, user_id, "openai").await?;
+    if key.is_none() {
+        key = get_provider_key(pool, user_id, "ollama").await?;
+    }
+    Ok(key)
+}
