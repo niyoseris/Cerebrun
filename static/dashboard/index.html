@@ -5,10 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Context MCP - Dashboard</title>
     <style>
+        :root {
+            --bg: #0f1117;
+            --card-bg: #1a1d27;
+            --text: #e1e5ee;
+            --border: #2a2d3a;
+            --accent: #7c8aff;
+            --input-bg: #0f1117;
+            --tab-bg: #1a1d27;
+        }
+        body.light-theme {
+            --bg: #f5f7fb;
+            --card-bg: #ffffff;
+            --text: #2d3436;
+            --border: #dfe6e9;
+            --accent: #6c5ce7;
+            --input-bg: #ffffff;
+            --tab-bg: #ffffff;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e5ee; min-height: 100vh; }
-        .header { background: #1a1d27; border-bottom: 1px solid #2a2d3a; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { font-size: 20px; color: #7c8aff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; transition: background 0.3s, color 0.3s; }
+        .header { background: var(--card-bg); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; color: var(--accent); }
         .header .user-info { display: flex; align-items: center; gap: 12px; }
         .header .user-info img { width: 32px; height: 32px; border-radius: 50%; }
         .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
@@ -16,31 +34,31 @@
         .auth-screen h2 { font-size: 28px; margin-bottom: 8px; }
         .auth-screen p { color: #8b8fa3; margin-bottom: 24px; }
         .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
-        .btn-primary { background: #7c8aff; color: white; }
-        .btn-primary:hover { background: #6b79ee; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { opacity: 0.9; }
         .btn-danger { background: #ff4757; color: white; }
         .btn-danger:hover { background: #ee3646; }
-        .btn-secondary { background: #2a2d3a; color: #e1e5ee; }
-        .btn-secondary:hover { background: #3a3d4a; }
+        .btn-secondary { background: var(--border); color: var(--text); }
+        .btn-secondary:hover { opacity: 0.8; }
         .btn-sm { padding: 6px 12px; font-size: 12px; }
-        .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: #1a1d27; padding: 4px; border-radius: 10px; }
+        .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--card-bg); padding: 4px; border-radius: 10px; border: 1px solid var(--border); }
         .tab { padding: 10px 20px; border: none; background: transparent; color: #8b8fa3; cursor: pointer; border-radius: 8px; font-size: 14px; }
-        .tab.active { background: #7c8aff; color: white; }
-        .card { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-        .card h3 { font-size: 16px; margin-bottom: 12px; color: #7c8aff; }
+        .tab.active { background: var(--accent); color: white; }
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+        .card h3 { font-size: 16px; margin-bottom: 12px; color: var(--accent); }
         .form-group { margin-bottom: 16px; }
         .form-group label { display: block; font-size: 13px; color: #8b8fa3; margin-bottom: 6px; }
-        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px 12px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; color: #e1e5ee; font-size: 14px; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; }
         .form-group textarea { min-height: 80px; resize: vertical; }
         .checkbox-group { display: flex; gap: 16px; flex-wrap: wrap; }
-        .checkbox-group label { display: flex; align-items: center; gap: 6px; color: #e1e5ee; cursor: pointer; }
+        .checkbox-group label { display: flex; align-items: center; gap: 6px; color: var(--text); cursor: pointer; }
         .checkbox-group input[type="checkbox"] { width: auto; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #2a2d3a; font-size: 13px; }
+        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text); }
         th { color: #8b8fa3; font-weight: 500; }
         .status-active { color: #2ed573; }
         .status-revoked { color: #ff4757; }
-        .key-display { background: #0f1117; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 13px; word-break: break-all; border: 1px solid #7c8aff; margin: 12px 0; }
+        .key-display { background: var(--input-bg); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 13px; word-break: break-all; border: 1px solid var(--accent); margin: 12px 0; }
         .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
         .alert-warning { background: #ff47571a; border: 1px solid #ff4757; color: #ff6b7a; }
         .alert-info { background: #7c8aff1a; border: 1px solid #7c8aff; color: #9ba6ff; }
@@ -56,6 +74,7 @@
         .layer-tag-0 { background: #2ed5731a; color: #2ed573; }
         .layer-tag-1 { background: #7c8aff1a; color: #7c8aff; }
         .layer-tag-2 { background: #ffa5021a; color: #ffa502; }
+        .theme-toggle-btn { background: none; border: none; cursor: pointer; font-size: 18px; padding: 4px; color: var(--accent); display: flex; align-items: center; justify-content: center; margin-right: 12px; }
     </style>
 </head>
 <body>
@@ -75,6 +94,7 @@
         <div class="header">
             <h1>User Context MCP</h1>
             <div class="user-info">
+                <button class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Theme">🌓</button>
                 <span id="user-name"></span>
                 <img id="user-avatar" src="" alt="" />
                 <button class="btn btn-secondary btn-sm" onclick="logout()">Logout</button>
@@ -871,6 +891,11 @@ curl -X POST \
                     <td>${e.request_count || 0}</td>
                 </tr>
             `).join('') || '<tr><td colspan="4" style="color: #8b8fa3; text-align: center;">No usage data yet.</td></tr>';
+        }
+
+        function init() {
+            initTheme();
+            checkAuth();
         }
 
         init();
