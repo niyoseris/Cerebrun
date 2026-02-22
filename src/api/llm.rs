@@ -202,6 +202,17 @@ pub async fn chat(
         &state.pool, conv_id, "user", &req.message, None, None, 0, 0, 0,
     ).await?;
 
+    // Auto-embed user message if enabled
+    if db::system::is_auto_embedding_enabled(&state.pool).await {
+        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(&state, session.user.id).await {
+            if let Ok(resp) = provider::get_embedding(&emb_provider, &emb_key, &req.message).await {
+                let _ = db::embeddings::upsert_context_embedding(
+                    &state.pool, session.user.id, "conversation_message", &conv_id.to_string(), &req.message, &resp.embedding
+                ).await;
+            }
+        }
+    }
+
     // Semantic search for context injection
     let mut injected_context = String::new();
     if conv.inject_context.unwrap_or(true) {
@@ -427,6 +438,17 @@ pub async fn stream_chat(
     let _user_msg = db::conversations::add_message(
         &state.pool, conv_id, "user", &req.message, None, None, 0, 0, 0,
     ).await?;
+
+    // Auto-embed user message if enabled
+    if db::system::is_auto_embedding_enabled(&state.pool).await {
+        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(&state, session.user.id).await {
+            if let Ok(resp) = provider::get_embedding(&emb_provider, &emb_key, &req.message).await {
+                let _ = db::embeddings::upsert_context_embedding(
+                    &state.pool, session.user.id, "conversation_message", &conv_id.to_string(), &req.message, &resp.embedding
+                ).await;
+            }
+        }
+    }
 
     // Semantic search for context injection
     let mut injected_context = String::new();
