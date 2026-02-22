@@ -340,6 +340,19 @@ let currentConvId = null;
 let conversations = [];
 let compareTargets = [];
 let isSending = false;
+let systemModels = null;
+
+async function fetchSystemModels() {
+    try {
+        const res = await api('/api/llm/models');
+        systemModels = await res.json();
+        console.log('Loaded system models:', systemModels);
+        updateNewConvModels();
+        updateCompareModels();
+    } catch (e) {
+        console.error('Failed to load system models:', e);
+    }
+}
 
 function loadPrefs() {
     const p = JSON.parse(localStorage.getItem('llm_prefs') || '{}');
@@ -373,7 +386,8 @@ async function api(path, opts = {}) {
 
 function populateSelect(selectId, provider) {
     const sel = document.getElementById(selectId);
-    sel.innerHTML = (MODELS[provider] || []).map(m => `<option value="${m}">${m}</option>`).join('');
+    const models = (systemModels && systemModels[provider]) ? systemModels[provider] : (MODELS[provider] || []);
+    sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
 }
 
 function updateNewConvModels() { populateSelect('new-conv-model', document.getElementById('new-conv-provider').value); }
@@ -844,14 +858,14 @@ function initTheme() {
     }
 }
 
-function init() {
+async function init() {
     initTheme();
     loadPrefs();
-    updateNewConvModels();
-    updateCompareModels();
-    loadKeys();
-    loadConversations();
+    await loadKeys();
+    await fetchSystemModels();
+    await loadConversations();
     loadMetrics();
+    setInterval(loadMetrics, 30000);
 
     const input = document.getElementById('chat-input');
     if (input) {
