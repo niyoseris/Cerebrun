@@ -132,15 +132,19 @@ fn build_system_prompt_layer0_only(
 }
 
 pub async fn get_embedding_key(state: &AppState, user_id: Uuid) -> Option<(String, String)> {
-    let target_provider = db::system::get_embedding_provider(&state.pool).await;
-    let llm_key = if let Ok(Some(k)) = db::llm_keys::get_provider_key(&state.pool, user_id, &target_provider).await {
+    get_embedding_key_with_pool(&state.pool, &state.config, user_id).await
+}
+
+pub async fn get_embedding_key_with_pool(pool: &sqlx::PgPool, config: &crate::config::AppConfig, user_id: Uuid) -> Option<(String, String)> {
+    let target_provider = db::system::get_embedding_provider(pool).await;
+    let llm_key = if let Ok(Some(k)) = db::llm_keys::get_provider_key(pool, user_id, &target_provider).await {
         Some(k)
     } else {
-        db::llm_keys::get_any_embedding_key(&state.pool, user_id).await.ok().flatten()
+        db::llm_keys::get_any_embedding_key(pool, user_id).await.ok().flatten()
     };
 
     if let Some(key_info) = llm_key {
-        let vault_key = vault_crypto::derive_vault_key(&state.config.session_secret);
+        let vault_key = vault_crypto::derive_vault_key(&config.session_secret);
         if let Ok(decrypted) = vault_crypto::decrypt_vault_data(&key_info.encrypted_key, &vault_key) {
             if let Ok(api_key) = String::from_utf8(decrypted) {
                 return Some((key_info.provider, api_key));

@@ -283,6 +283,17 @@ pub async fn chat(
         response.total_tokens,
     ).await;
 
+    // Auto-embed assistant response if enabled
+    if db::system::is_auto_embedding_enabled(&state.pool).await {
+        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(&state, session.user.id).await {
+            if let Ok(resp) = provider::get_embedding(&emb_provider, &emb_key, &response.content).await {
+                let _ = db::embeddings::upsert_context_embedding(
+                    &state.pool, session.user.id, "conversation_message", &format!("{}_assistant", conv_id), &response.content, &resp.embedding
+                ).await;
+            }
+        }
+    }
+
     Ok(Json(ChatResponse {
         message: assistant_msg,
         usage: TokenUsage {
@@ -506,6 +517,7 @@ pub async fn stream_chat(
 
     let pool = state.pool.clone();
     let user_id = session.user.id;
+    let state_config = state.config.clone();
 
     let stream = async_stream::stream! {
         yield Ok(Event::default().data(json!({"type": "start", "provider": &prov, "model": &mdl}).to_string()));
@@ -530,6 +542,17 @@ pub async fn stream_chat(
                         &prov, &mdl, response.prompt_tokens, response.completion_tokens,
                         response.total_tokens,
                     ).await;
+
+                    // Auto-embed assistant response if enabled (streaming)
+                    if db::system::is_auto_embedding_enabled(&pool).await {
+                        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key_with_pool(&pool, &state_config, user_id).await {
+                            if let Ok(resp) = provider::get_embedding(&emb_provider, &emb_key, &response.content).await {
+                                let _ = db::embeddings::upsert_context_embedding(
+                                    &pool, user_id, "conversation_message", &format!("{}_assistant", conv_id), &response.content, &resp.embedding
+                                ).await;
+                            }
+                        }
+                    }
                 }
 
                 yield Ok(Event::default().data(json!({
