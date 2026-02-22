@@ -9,6 +9,7 @@ pub struct User {
     pub email: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub is_admin: bool,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -19,6 +20,7 @@ pub struct UserInfo {
     pub email: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub is_admin: bool,
 }
 
 impl From<User> for UserInfo {
@@ -28,6 +30,7 @@ impl From<User> for UserInfo {
             email: u.email,
             display_name: u.display_name,
             avatar_url: u.avatar_url,
+            is_admin: u.is_admin,
         }
     }
 }

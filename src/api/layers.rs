@@ -93,32 +93,34 @@ pub async fn put_layer1(
     let updated = db::layers::update_layer1(&state.pool, agent.api_key.user_id, &data).await?;
 
     // Auto-embed Layer 1 context
-    if let Some(llm_key) = db::llm_keys::get_any_embedding_key(&state.pool, agent.api_key.user_id).await.ok().flatten() {
-        let mut context_text = String::new();
-        if let Some(projects) = &updated.active_projects {
-            if let Some(arr) = projects.as_array() {
-                let p_list: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
-                context_text.push_str(&format!("Projects: {}\n", p_list.join(", ")));
+    if db::system::is_auto_embedding_enabled(&state.pool).await {
+        if let Some(llm_key) = db::llm_keys::get_any_embedding_key(&state.pool, agent.api_key.user_id).await.ok().flatten() {
+            let mut context_text = String::new();
+            if let Some(projects) = &updated.active_projects {
+                if let Some(arr) = projects.as_array() {
+                    let p_list: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                    context_text.push_str(&format!("Projects: {}\n", p_list.join(", ")));
+                }
             }
-        }
-        if let Some(goals) = &updated.current_goals {
-            if let Some(arr) = goals.as_array() {
-                let g_list: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
-                context_text.push_str(&format!("Goals: {}\n", g_list.join("\n")));
+            if let Some(goals) = &updated.current_goals {
+                if let Some(arr) = goals.as_array() {
+                    let g_list: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                    context_text.push_str(&format!("Goals: {}\n", g_list.join("\n")));
+                }
             }
-        }
-        if let Some(memories) = &updated.pinned_memories {
-            if let Some(arr) = memories.as_array() {
-                let m_list: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
-                context_text.push_str(&format!("Memories: {}\n", m_list.join("\n")));
+            if let Some(memories) = &updated.pinned_memories {
+                if let Some(arr) = memories.as_array() {
+                    let m_list: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                    context_text.push_str(&format!("Memories: {}\n", m_list.join("\n")));
+                }
             }
-        }
-        
-        if !context_text.is_empty() {
-            let api_key = crate::api::llm::decrypt_provider_key(&state, &llm_key.encrypted_key).ok();
-            if let Some(key) = api_key {
-                if let Ok(resp) = crate::llm::provider::get_embedding(&llm_key.provider, &key, &context_text).await {
-                    let _ = db::embeddings::upsert_context_embedding(&state.pool, agent.api_key.user_id, "layer1", "all", &context_text, &resp.embedding).await;
+            
+            if !context_text.is_empty() {
+                let api_key = crate::api::llm::decrypt_provider_key(&state, &llm_key.encrypted_key).ok();
+                if let Some(key) = api_key {
+                    if let Ok(resp) = crate::llm::provider::get_embedding(&llm_key.provider, &key, &context_text).await {
+                        let _ = db::embeddings::upsert_context_embedding(&state.pool, agent.api_key.user_id, "layer1", "all", &context_text, &resp.embedding).await;
+                    }
                 }
             }
         }

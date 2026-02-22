@@ -457,12 +457,27 @@ pub async fn stream_chat(
 }
 
 pub async fn get_models(
+    State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let providers = provider::supported_providers();
+    let db_models = db::system::list_system_models(&state.pool).await?;
     let mut result = serde_json::Map::new();
-    for p in providers {
-        let models = provider::available_models(p);
-        result.insert(p.to_string(), json!(models));
+    
+    for m in db_models {
+        result.entry(m.provider)
+            .or_insert(json!(Vec::<String>::new()))
+            .as_array_mut()
+            .unwrap()
+            .push(json!(m.model_name));
     }
+    
+    // If DB is empty, fallback to hardcoded
+    if result.is_empty() {
+        let providers = provider::supported_providers();
+        for p in providers {
+            let models = provider::available_models(p);
+            result.insert(p.to_string(), json!(models));
+        }
+    }
+    
     Ok(Json(json!(result)))
 }

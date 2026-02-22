@@ -109,6 +109,7 @@
                 <button class="tab" onclick="showTab('audit')">Audit Log</button>
                 <button class="tab" onclick="showTab('knowledge')">Knowledge Base</button>
                 <button class="tab" onclick="showTab('howto')">How to Use</button>
+                <button class="tab" id="tab-btn-admin" style="display:none;" onclick="showTab('admin')">Admin</button>
                 <button class="tab" onclick="showTab('settings')">Settings</button>
                 <a href="/chat" class="tab" style="text-decoration:none; background:#2ed573; color:#0f1117; font-weight:600;">LLM Gateway</a>
             </div>
@@ -448,6 +449,50 @@ curl -X POST \
                 </div>
             </div>
 
+            <div id="tab-admin" class="hidden">
+                <div class="card">
+                    <h3>System Models (Global)</h3>
+                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">Add models here to make them available to all users.</p>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>Provider</label>
+                            <select id="admin-model-provider">
+                                <option value="openai">OpenAI</option>
+                                <option value="gemini">Gemini</option>
+                                <option value="anthropic">Anthropic</option>
+                                <option value="ollama">Ollama Cloud</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Model Name (ID)</label>
+                            <input type="text" id="admin-model-name" placeholder="gpt-4.1" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Display Name</label>
+                        <input type="text" id="admin-model-display" placeholder="GPT-4.1 Turbo" />
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="addSystemModel()">Add System Model</button>
+                    
+                    <table style="margin-top: 20px;">
+                        <thead>
+                            <tr><th>Provider</th><th>Model ID</th><th>Display Name</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody id="admin-models-table"></tbody>
+                    </table>
+                </div>
+                
+                <div class="card">
+                    <h3>System Settings</h3>
+                    <div class="form-group">
+                        <label class="checkbox-group">
+                            <input type="checkbox" id="admin-setting-auto-embed" onchange="updateAdminSetting('auto_embedding', this.checked)">
+                            Global Auto-Embedding enabled
+                        </label>
+                    </div>
+                </div>
+            </div>
+
             <div id="tab-settings" class="hidden">
                 <div class="card">
                     <h3>LLM Keys</h3>
@@ -521,6 +566,9 @@ curl -X POST \
                     if (currentUser.avatar_url) {
                         document.getElementById('user-avatar').src = currentUser.avatar_url;
                     }
+                    if (currentUser.is_admin) {
+                        document.getElementById('tab-btn-admin').style.display = 'block';
+                    }
                     loadKeys();
                 }
             } catch (e) {}
@@ -536,6 +584,63 @@ curl -X POST \
             if (name === 'context') loadContext();
             if (name === 'knowledge') loadKnowledge();
             if (name === 'settings') loadTokenMetrics();
+            if (name === 'admin') {
+                loadAdminModels();
+                loadAdminSettings();
+            }
+        }
+
+        async function loadAdminModels() {
+            const res = await fetch('/api/admin/models');
+            if (!res.ok) return;
+            const models = await res.json();
+            const tbody = document.getElementById('admin-models-table');
+            tbody.innerHTML = models.map(m => `
+                <tr>
+                    <td style="text-transform:uppercase;font-size:10px;font-weight:700;color:var(--accent);">${m.provider}</td>
+                    <td><code>${m.model_name}</code></td>
+                    <td>${m.display_name || m.model_name}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deleteSystemModel('${m.id}')">Remove</button></td>
+                </tr>
+            `).join('');
+        }
+
+        async function addSystemModel() {
+            const provider = document.getElementById('admin-model-provider').value;
+            const model_name = document.getElementById('admin-model-name').value;
+            const display_name = document.getElementById('admin-model-display').value;
+            if (!model_name) return alert('Model name is required');
+            const res = await fetch('/api/admin/models', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, model_name, display_name })
+            });
+            if (res.ok) {
+                document.getElementById('admin-model-name').value = '';
+                document.getElementById('admin-model-display').value = '';
+                loadAdminModels();
+            }
+        }
+
+        async function deleteSystemModel(id) {
+            if (!confirm('Are you sure?')) return;
+            await fetch(`/api/admin/models/${id}`, { method: 'DELETE' });
+            loadAdminModels();
+        }
+
+        async function loadAdminSettings() {
+            const res = await fetch('/api/admin/settings');
+            if (!res.ok) return;
+            const settings = await res.json();
+            document.getElementById('admin-setting-auto-embed').checked = settings.auto_embedding;
+        }
+
+        async function updateAdminSetting(key, value) {
+            await fetch('/api/admin/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key, value })
+            });
         }
 
         async function loadKeys() {
