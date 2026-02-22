@@ -29,13 +29,13 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "search_context",
-                "description": "Semantic search across user's context layers and knowledge base using vector embeddings. Use this to find relevant context BEFORE injecting it into conversations. This prevents over-injection by only retrieving context items that are semantically relevant to the current topic. Returns ranked results with similarity scores. Requires an OpenAI or Ollama API key for embedding generation.",
+                "description": "Semantic search across user's context layers and knowledge base using vector embeddings. Use this to find relevant context BEFORE injecting it into conversations. This prevents over-injection by only retrieving context items that are semantically relevant to the current topic. Returns ranked results with similarity scores. Requires an OpenAI or Ollama API key for embedding generation. Admin-configurable search limits and thresholds apply.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "query": { "type": "string", "description": "Natural language search query (e.g., 'Rust authentication implementation', 'user preferences for coding style')" },
-                        "limit": { "type": "integer", "description": "Max results to return (default 10)", "default": 10 },
-                        "min_similarity": { "type": "number", "description": "Minimum similarity threshold 0.0-1.0 (default 0.3)", "default": 0.3 },
+                        "limit": { "type": "integer", "description": "Max results to return (overrides system default if provided)" },
+                        "min_similarity": { "type": "number", "description": "Minimum similarity threshold 0.0-1.0 (overrides system default if provided)" },
                         "include_knowledge": { "type": "boolean", "description": "Also search Knowledge Base entries (default true)", "default": true }
                     },
                     "required": ["query"]
