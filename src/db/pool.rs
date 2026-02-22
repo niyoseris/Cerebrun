@@ -58,6 +58,18 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
         tracing::info!("Migration 004 (vector embeddings) applied");
     }
 
+    let migration_005 = include_str!("../../migrations/005_system_tables.sql");
+    let has_system_settings = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'system_settings')",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if !has_system_settings {
+        run_sql(pool, migration_005).await?;
+        tracing::info!("Migration 005 (system tables) applied");
+    }
+
     tracing::info!("All migrations up to date");
     Ok(())
 }
