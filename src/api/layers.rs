@@ -202,5 +202,6 @@ pub async fn get_me(session: SessionUser) -> Json<serde_json::Value> {
         "email": user.email,
         "display_name": user.display_name,
         "avatar_url": user.avatar_url,
+        "is_admin": user.is_admin,
     }))
 }

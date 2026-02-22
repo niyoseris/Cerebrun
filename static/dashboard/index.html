@@ -560,6 +560,7 @@ curl -X POST \
                 const res = await fetch('/auth/me');
                 if (res.ok) {
                     currentUser = await res.json();
+                    console.log('Current User:', currentUser);
                     document.getElementById('auth-screen').classList.add('hidden');
                     document.getElementById('dashboard').classList.remove('hidden');
                     document.getElementById('user-name').textContent = currentUser.display_name || currentUser.email;
@@ -567,7 +568,10 @@ curl -X POST \
                         document.getElementById('user-avatar').src = currentUser.avatar_url;
                     }
                     if (currentUser.is_admin) {
+                        console.log('User is admin, showing admin tab');
                         document.getElementById('tab-btn-admin').style.display = 'block';
+                    } else {
+                        console.log('User is NOT admin');
                     }
                     loadKeys();
                 }
