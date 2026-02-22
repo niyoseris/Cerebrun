@@ -118,7 +118,8 @@ pub async fn put_layer1(
             if !context_text.is_empty() {
                 let api_key = crate::api::llm::decrypt_provider_key(&state, &llm_key.encrypted_key).ok();
                 if let Some(key) = api_key {
-                    if let Ok(resp) = crate::llm::provider::get_embedding(&llm_key.provider, &key, &context_text).await {
+                    let embed_provider = db::system::get_embedding_provider(&state.pool).await;
+                    if let Ok(resp) = crate::llm::provider::get_embedding(&embed_provider, &key, &context_text).await {
                         let _ = db::embeddings::upsert_context_embedding(&state.pool, agent.api_key.user_id, "layer1", "all", &context_text, &resp.embedding).await;
                     }
                 }

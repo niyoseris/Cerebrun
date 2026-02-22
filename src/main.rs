@@ -101,6 +101,7 @@ async fn main() {
         .route("/api/admin/settings", get(api::admin::get_settings))
         .route("/api/admin/settings", post(api::admin::update_setting))
         .route("/api/knowledge", get(api::knowledge::list_knowledge))
+        .route("/api/knowledge", post(api::knowledge::create_knowledge))
         .route("/api/knowledge/:id", get(api::knowledge::get_knowledge))
         .route("/api/knowledge/:id", delete(api::knowledge::delete_knowledge))
         .route("/health", get(health_check))

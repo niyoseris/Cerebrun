@@ -132,11 +132,18 @@ fn build_system_prompt_layer0_only(
 }
 
 async fn get_embedding_key(state: &AppState, user_id: Uuid) -> Option<(String, String)> {
-    if let Some(llm_key) = db::llm_keys::get_any_embedding_key(&state.pool, user_id).await.ok().flatten() {
+    let target_provider = db::system::get_embedding_provider(&state.pool).await;
+    let llm_key = if let Ok(Some(k)) = db::llm_keys::get_provider_key(&state.pool, user_id, &target_provider).await {
+        Some(k)
+    } else {
+        db::llm_keys::get_any_embedding_key(&state.pool, user_id).await.ok().flatten()
+    };
+
+    if let Some(key_info) = llm_key {
         let vault_key = vault_crypto::derive_vault_key(&state.config.session_secret);
-        if let Ok(decrypted) = vault_crypto::decrypt_vault_data(&llm_key.encrypted_key, &vault_key) {
+        if let Ok(decrypted) = vault_crypto::decrypt_vault_data(&key_info.encrypted_key, &vault_key) {
             if let Ok(api_key) = String::from_utf8(decrypted) {
-                return Some((llm_key.provider, api_key));
+                return Some((key_info.provider, api_key));
             }
         }
     }
@@ -696,19 +703,17 @@ async fn execute_tool(
             ).await.map_err(|e| e.to_string())?;
 
             if db::system::is_auto_embedding_enabled(&state.pool).await {
-                if let Some(llm_key) = db::llm_keys::get_any_embedding_key(&state.pool, user_id).await.ok().flatten() {
+                if let Some((emb_provider, emb_key)) = get_embedding_key(state, user_id).await {
                     let embed_text = if let Some(s) = summary {
                         format!("{}: {}", s, content)
                     } else {
                         content.to_string()
                     };
-                    let api_key = crate::api::llm::decrypt_provider_key(&state, &llm_key.encrypted_key).ok();
-                    if let Some(key) = api_key {
-                        if let Ok(resp) = provider::get_embedding(&llm_key.provider, &key, &embed_text).await {
-                            let _ = db::embeddings::update_knowledge_embedding(
-                                &state.pool, entry.id, &resp.embedding,
-                            ).await;
-                        }
+                    
+                    if let Ok(resp) = provider::get_embedding(&emb_provider, &emb_key, &embed_text).await {
+                        let _ = db::embeddings::update_knowledge_embedding(
+                            &state.pool, entry.id, &resp.embedding,
+                        ).await;
                     }
                 }
             }
