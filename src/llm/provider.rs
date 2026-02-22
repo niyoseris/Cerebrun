@@ -392,7 +392,7 @@ async fn get_openai_embedding(api_key: &str, text: &str) -> Result<EmbeddingResp
 async fn get_ollama_embedding(api_key: &str, text: &str) -> Result<EmbeddingResponse, String> {
     let client = reqwest::Client::new();
     let body = json!({
-        "model": "nomic-embed-text",
+        "model": "nomic-embed-text-v2-moe",
         "input": text,
     });
 
