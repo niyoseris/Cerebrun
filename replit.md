@@ -120,6 +120,7 @@ static/dashboard/
 - `SESSION_SECRET` - Session encryption key
 
 ## Recent Changes
+- 2026-02-22: Cross-conversation memory - LLM Gateway now retrieves recent messages from other conversations and injects them as context, enabling memory across conversation windows. Uses direct DB search (always works) + vector search (knowledge/context layers). Grouped by conversation with chronological ordering, token budget respected.
 - 2026-02-22: Vector embeddings + over-injection protection - pgvector extension, auto-embedding of knowledge and context items, search_context MCP tool for semantic search, only Layer 0 auto-injected in conversations, inject_context toggle and token budget per conversation
 - 2026-02-22: Ollama Cloud provider added - 4th LLM provider with OpenAI-compatible API, chat + embedding support (nomic-embed-text)
 - 2026-02-22: Cost tracking removed - Users track costs via their own provider accounts. Token metrics retained.
