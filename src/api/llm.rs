@@ -202,16 +202,51 @@ pub async fn chat(
         &state.pool, conv_id, "user", &req.message, None, None, 0, 0, 0,
     ).await?;
 
+    // Semantic search for context injection
+    let mut injected_context = String::new();
+    if conv.inject_context.unwrap_or(true) {
+        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(&state, session.user.id).await {
+            if let Ok(query_resp) = provider::get_embedding(&emb_provider, &emb_key, &req.message).await {
+                let limit = (conv.context_token_budget.unwrap_or(2000) / 100) as i64; // Rough estimate
+                
+                // Search knowledge
+                if let Ok(knowledge_results) = db::embeddings::search_similar_knowledge(
+                    &state.pool, session.user.id, &query_resp.embedding, limit, 0.7
+                ).await {
+                    for k in knowledge_results {
+                        injected_context.push_str(&format!("[Knowledge: {}] {}\n", k.category, k.content));
+                    }
+                }
+                
+                // Search other context (Layer 1-2)
+                if let Ok(context_results) = db::embeddings::search_similar_context(
+                    &state.pool, session.user.id, &query_resp.embedding, limit, 0.7
+                ).await {
+                    for c in context_results {
+                        injected_context.push_str(&format!("[Context: {}] {}\n", c.source_type, c.content_text));
+                    }
+                }
+            }
+        }
+    }
+
     let history = db::conversations::get_messages(&state.pool, conv_id).await?;
     let mut llm_messages: Vec<provider::LlmMessage> = Vec::new();
 
-    if let Some(sys) = &conv.system_prompt {
-        if !sys.is_empty() {
-            llm_messages.push(provider::LlmMessage {
-                role: "system".to_string(),
-                content: sys.clone(),
-            });
+    let mut final_system_prompt = conv.system_prompt.clone().unwrap_or_default();
+    if !injected_context.is_empty() {
+        if !final_system_prompt.is_empty() {
+            final_system_prompt.push_str("\n\n");
         }
+        final_system_prompt.push_str("Relevant context found from your memory and knowledge base:\n");
+        final_system_prompt.push_str(&injected_context);
+    }
+
+    if !final_system_prompt.is_empty() {
+        llm_messages.push(provider::LlmMessage {
+            role: "system".to_string(),
+            content: final_system_prompt,
+        });
     }
 
     for msg in &history {
@@ -393,16 +428,51 @@ pub async fn stream_chat(
         &state.pool, conv_id, "user", &req.message, None, None, 0, 0, 0,
     ).await?;
 
+    // Semantic search for context injection
+    let mut injected_context = String::new();
+    if conv.inject_context.unwrap_or(true) {
+        if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(&state, session.user.id).await {
+            if let Ok(query_resp) = provider::get_embedding(&emb_provider, &emb_key, &req.message).await {
+                let limit = (conv.context_token_budget.unwrap_or(2000) / 100) as i64; // Rough estimate
+                
+                // Search knowledge
+                if let Ok(knowledge_results) = db::embeddings::search_similar_knowledge(
+                    &state.pool, session.user.id, &query_resp.embedding, limit, 0.7
+                ).await {
+                    for k in knowledge_results {
+                        injected_context.push_str(&format!("[Knowledge: {}] {}\n", k.category, k.content));
+                    }
+                }
+                
+                // Search other context (Layer 1-2)
+                if let Ok(context_results) = db::embeddings::search_similar_context(
+                    &state.pool, session.user.id, &query_resp.embedding, limit, 0.7
+                ).await {
+                    for c in context_results {
+                        injected_context.push_str(&format!("[Context: {}] {}\n", c.source_type, c.content_text));
+                    }
+                }
+            }
+        }
+    }
+
     let history = db::conversations::get_messages(&state.pool, conv_id).await?;
     let mut llm_messages: Vec<provider::LlmMessage> = Vec::new();
 
-    if let Some(sys) = &conv.system_prompt {
-        if !sys.is_empty() {
-            llm_messages.push(provider::LlmMessage {
-                role: "system".to_string(),
-                content: sys.clone(),
-            });
+    let mut final_system_prompt = conv.system_prompt.clone().unwrap_or_default();
+    if !injected_context.is_empty() {
+        if !final_system_prompt.is_empty() {
+            final_system_prompt.push_str("\n\n");
         }
+        final_system_prompt.push_str("Relevant context found from your memory and knowledge base:\n");
+        final_system_prompt.push_str(&injected_context);
+    }
+
+    if !final_system_prompt.is_empty() {
+        llm_messages.push(provider::LlmMessage {
+            role: "system".to_string(),
+            content: final_system_prompt,
+        });
     }
 
     for msg in &history {

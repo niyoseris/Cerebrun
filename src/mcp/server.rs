@@ -131,7 +131,7 @@ fn build_system_prompt_layer0_only(
     format!("You are a helpful assistant. Here is context about the user:\n\n{}", parts.join("\n\n"))
 }
 
-async fn get_embedding_key(state: &AppState, user_id: Uuid) -> Option<(String, String)> {
+pub async fn get_embedding_key(state: &AppState, user_id: Uuid) -> Option<(String, String)> {
     let target_provider = db::system::get_embedding_provider(&state.pool).await;
     let llm_key = if let Ok(Some(k)) = db::llm_keys::get_provider_key(&state.pool, user_id, &target_provider).await {
         Some(k)

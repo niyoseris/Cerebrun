@@ -100,8 +100,8 @@ pub async fn create_knowledge(
     if db::system::is_auto_embedding_enabled(&state.pool).await {
         let target_provider = db::system::get_embedding_provider(&state.pool).await;
         if let Ok(Some(llm_key)) = db::llm_keys::get_provider_key(&state.pool, user_id, &target_provider).await {
-             let vault_key = crate::crypto::vault_crypto::derive_vault_key(&state.config.session_secret);
-             if let Ok(decrypted) = crate::crypto::vault_crypto::decrypt_vault_data(&llm_key.encrypted_key, &vault_key) {
+             let vault_key = crate::crypto::vault::derive_vault_key(&state.config.session_secret);
+             if let Ok(decrypted) = crate::crypto::vault::decrypt_vault_data(&llm_key.encrypted_key, &vault_key) {
                 if let Ok(api_key) = String::from_utf8(decrypted) {
                     let embed_text = if let Some(s) = &req.summary {
                         format!("{}: {}", s, req.content)
