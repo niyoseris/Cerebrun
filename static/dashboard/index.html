@@ -498,7 +498,19 @@ curl -X POST \
     <script>
         let currentUser = null;
 
+        function toggleTheme() {
+            document.body.classList.toggle('light-theme');
+            localStorage.setItem('theme', document.body.classList.contains('light-theme') ? 'light' : 'dark');
+        }
+
+        function initTheme() {
+            if (localStorage.getItem('theme') === 'light') {
+                document.body.classList.add('light-theme');
+            }
+        }
+
         async function init() {
+            initTheme();
             try {
                 const res = await fetch('/auth/me');
                 if (res.ok) {

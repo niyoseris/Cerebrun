@@ -473,11 +473,17 @@ pub async fn validate_key(provider: &str, api_key: &str) -> Result<bool, String>
             let resp = reqwest::Client::new()
                 .get("https://api.ollama.com/v1/models")
                 .header("Authorization", format!("Bearer {}", api_key))
+                .header("Content-Type", "application/json")
                 .timeout(Duration::from_secs(10))
                 .send()
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(resp.status().is_success())
+            
+            let status = resp.status();
+            if status.as_u16() == 401 {
+                return Err("Ollama Cloud error 401: unauthorized. Please check your API key.".to_string());
+            }
+            Ok(status.is_success())
         }
         _ => Err(format!("Unknown provider: {}", provider)),
     }
