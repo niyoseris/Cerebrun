@@ -426,17 +426,19 @@ pub async fn stream_chat(
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 }
 
-                let _ = db::conversations::add_message(
+                let assistant_msg = db::conversations::add_message(
                     &pool, conv_id, "assistant", &response.content,
                     Some(&prov), Some(&mdl),
                     response.prompt_tokens, response.completion_tokens, response.total_tokens,
                 ).await;
 
-                let _ = db::llm_usage::record_usage(
-                    &pool, user_id, Some(conv_id), None,
-                    &prov, &mdl, response.prompt_tokens, response.completion_tokens,
-                    response.total_tokens,
-                ).await;
+                if let Ok(msg) = &assistant_msg {
+                    let _ = db::llm_usage::record_usage(
+                        &pool, user_id, Some(conv_id), Some(msg.id),
+                        &prov, &mdl, response.prompt_tokens, response.completion_tokens,
+                        response.total_tokens,
+                    ).await;
+                }
 
                 yield Ok(Event::default().data(json!({
                     "type": "done",
