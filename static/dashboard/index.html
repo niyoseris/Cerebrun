@@ -392,6 +392,22 @@ curl -X POST \
 
             <div id="tab-consent" class="hidden">
                 <div class="card">
+                    <h3>Vault (Layer 3) — Encrypted Secrets</h3>
+                    <p style="font-size: 14px; color: #8b8fa3; margin-bottom: 16px;">
+                        Secrets stored here are encrypted with AES-256-GCM. AI agents can only read these if you approve a specific request.
+                    </p>
+                    <div class="form-group">
+                        <label>Secret Name (e.g., OPENAI_API_KEY)</label>
+                        <input type="text" id="vault-key" placeholder="MY_SECRET_KEY" />
+                    </div>
+                    <div class="form-group">
+                        <label>Secret Value</label>
+                        <textarea id="vault-value" placeholder="Paste your secret here..."></textarea>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="saveVault()">Save to Vault</button>
+                </div>
+
+                <div class="card">
                     <h3>Pending Vault Access Requests</h3>
                     <div id="consent-list"></div>
                 </div>
@@ -797,6 +813,32 @@ curl -X POST \
                 body: JSON.stringify({ request_id: id })
             });
             loadConsents();
+        }
+
+        async function saveVault() {
+            const key = document.getElementById('vault-key').value.trim();
+            const value = document.getElementById('vault-value').value.trim();
+            if (!key || !value) return alert('Key and value are required');
+            
+            // Note: We need a dedicated endpoint for Vault saving as /api/v0/context is for Layer 0
+            // Since we don't have a direct PUT /api/v3/context for session users yet, 
+            // we'll implement the UI call and I'll add the backend route if missing.
+            // Actually, the backend has /api/v0/context but it only handles Layer0Update model.
+            // I will add a proper vault save endpoint in a moment.
+            
+            const res = await fetch('/api/v3/context', { 
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [key]: value })
+            });
+            
+            if (res.ok) {
+                alert('Secret saved to Vault!');
+                document.getElementById('vault-key').value = '';
+                document.getElementById('vault-value').value = '';
+            } else {
+                alert('Failed to save secret');
+            }
         }
 
         async function loadAudit() {
