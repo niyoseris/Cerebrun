@@ -53,8 +53,51 @@ pub async fn handle_mcp(
                 },
                 "serverInfo": {
                     "name": "cerebrun-mcp",
-                    "version": "0.3.0"
-                }
+                    "version": "0.4.0"
+                },
+                "instructions": concat!(
+                    "You are connected to Cerebrun, the user's Digital Self MCP server. ",
+                    "This server stores the user's persistent context, knowledge, and conversation history across all AI agents.\n\n",
+
+                    "## Startup Workflow\n",
+                    "1. Call `get_context` with layer 0 to load the user's language, timezone, and communication preferences.\n",
+                    "2. If you have layer1 permission, call `get_context` with layer 1 to understand their active projects and goals.\n",
+                    "3. If you have layer1 permission AND an embedding key is configured, use `search_context` to find relevant context.\n",
+                    "4. If you only have basic access (no layer1), proceed with Layer 0 preferences only — that's fine.\n",
+                    "5. Only request Layer 2 (personal) when the conversation specifically requires personal info.\n\n",
+
+                    "## Layer Architecture — What Goes Where\n",
+                    "- **Layer 0 (Public Preferences):** Language, timezone, communication style, output format preferences, blocked topics. ",
+                    "Update this when the user expresses general preferences (e.g., 'I prefer concise answers', 'I work in UTC+3').\n",
+                    "- **Layer 1 (Work Context):** Active projects, current goals, working directories, pinned memories. ",
+                    "Update this when the user starts/finishes a project, sets a new goal, or asks you to remember something work-related.\n",
+                    "- **Layer 2 (Personal Identity):** Display name, location, interests, contact preferences, relationship notes. ",
+                    "Update this when the user shares personal information (e.g., 'I live in Istanbul', 'I'm interested in distributed systems').\n",
+                    "- **Layer 3 (Encrypted Vault):** API keys, tokens, passwords, and other secrets. ",
+                    "NEVER store secrets in Layers 0-2 or in the Knowledge Base. ",
+                    "The Vault is managed entirely through the Cerebrun dashboard — there is no MCP tool to write secrets. ",
+                    "When a user says 'save my API key' or shares a secret, direct them to the Cerebrun dashboard → Vault section. ",
+                    "You can use `request_vault_access` to REQUEST read access to existing secrets, but the user must approve the request first.\n\n",
+
+                    "## Knowledge Base\n",
+                    "Use `push_knowledge` to store important information that should persist across sessions:\n",
+                    "- Project updates, architectural decisions, bug fixes → use appropriate category\n",
+                    "- Always include a summary, category, and relevant tags for better retrieval\n",
+                    "- The content is automatically vectorized for semantic search\n",
+                    "- Use `query_knowledge` for keyword filtering or `search_context` for semantic search\n\n",
+
+                    "## LLM Gateway\n",
+                    "- Provider API keys are managed by the user through the dashboard (not through MCP tools)\n",
+                    "- Use `chat_with_llm` to delegate tasks to other LLMs when needed\n",
+                    "- The gateway supports OpenAI, Anthropic, Gemini, and Ollama Cloud\n\n",
+
+                    "## Important Rules\n",
+                    "- NEVER store API keys, passwords, or tokens in Layers 0-2 or Knowledge Base — use Vault (Layer 3) only\n",
+                    "- Use `search_context` before injecting large amounts of context to prevent token waste\n",
+                    "- Always include `source_project` when pushing knowledge related to a specific project\n",
+                    "- Respect layer permissions — if you don't have layer1/layer2 access, don't attempt to read those layers\n",
+                    "- When the user asks you to 'remember' something, decide the correct layer: preferences → Layer 0, work context → Layer 1, personal info → Layer 2, secrets → Vault"
+                )
             })),
             error: None,
         },
