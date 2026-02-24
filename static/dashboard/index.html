@@ -543,8 +543,8 @@ curl -X POST \
                     <td>${k.name}</td>
                     <td>
                         <span class="layer-tag layer-tag-0">L0</span>
-                        ${k.scopes.includes('layer1') ? '<span class="layer-tag layer-tag-1">L1</span>' : ''}
-                        ${k.scopes.includes('layer2') ? '<span class="layer-tag layer-tag-2">L2</span>' : ''}
+                        ${(k.scopes || []).includes('layer1') ? '<span class="layer-tag layer-tag-1">L1</span>' : ''}
+                        ${(k.scopes || []).includes('layer2') ? '<span class="layer-tag layer-tag-2">L2</span>' : ''}
                     </td>
                     <td class="status-active">Active</td>
                     <td>${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never'}</td>
