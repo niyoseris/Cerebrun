@@ -133,20 +133,36 @@ pub async fn google_callback(
         ])
         .send()
         .await
-        .map_err(|e| AppError::OAuth(e.to_string()))?
+        .map_err(|e| {
+            tracing::error!("OAuth - Token request failed: {}", e);
+            AppError::OAuth(e.to_string())
+        })?
         .json()
         .await
-        .map_err(|e| AppError::OAuth(e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!("OAuth - Token JSON parsing failed: {}", e);
+            AppError::OAuth(e.to_string())
+        })?;
+
+    tracing::info!("OAuth - Token Received Successfully");
 
     let user_info: GoogleUserInfo = reqwest::Client::new()
         .get("https://www.googleapis.com/oauth2/v3/userinfo")
         .bearer_auth(&token_response.access_token)
         .send()
         .await
-        .map_err(|e| AppError::OAuth(e.to_string()))?
+        .map_err(|e| {
+            tracing::error!("OAuth - Failed to fetch userinfo: {}", e);
+            AppError::OAuth(e.to_string())
+        })?
         .json()
         .await
-        .map_err(|e| AppError::OAuth(e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!("OAuth - Failed to parse userinfo JSON: {}", e);
+            AppError::OAuth(e.to_string())
+        })?;
+
+    tracing::info!("OAuth - User Info Fetched: {}", user_info.email);
 
     let user = db::users::upsert_user(
         &state.pool,
@@ -155,7 +171,11 @@ pub async fn google_callback(
         user_info.name.as_deref(),
         user_info.picture.as_deref(),
     )
-    .await?;
+    .await
+    .map_err(|e| {
+        tracing::error!("OAuth - Failed to upsert user: {}", e);
+        e
+    })?;
 
     let session_token = session::create_session(&state.pool, user.id).await?;
 

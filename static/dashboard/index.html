@@ -392,23 +392,26 @@ curl -X POST \
 
             <div id="tab-consent" class="hidden">
                 <div class="card">
-                    <h3>Vault (Layer 3) — Encrypted Secrets</h3>
-                    <p style="font-size: 14px; color: #8b8fa3; margin-bottom: 16px;">
-                        Secrets stored here are encrypted with AES-256-GCM. AI agents can only read these if you approve a specific request.
-                    </p>
-                    <div class="form-group">
-                        <label>Secret Name (e.g., OPENAI_API_KEY)</label>
-                        <input type="text" id="vault-key" placeholder="MY_SECRET_KEY" />
+                    <h3>Vault Secrets (Layer 3)</h3>
+                    <div class="alert alert-info">
+                        Store sensitive data here. AI agents cannot see this data directly. 
+                        They must request access, and you must approve it for each session.
                     </div>
-                    <div class="form-group">
-                        <label>Secret Value</label>
-                        <textarea id="vault-value" placeholder="Paste your secret here..."></textarea>
+                    <div class="form-group grid-2">
+                        <div>
+                            <label>Secret Name (e.g., OPENAI_API_KEY)</label>
+                            <input type="text" id="vault-key" />
+                        </div>
+                        <div>
+                            <label>Secret Value</label>
+                            <input type="password" id="vault-value" />
+                        </div>
                     </div>
                     <button class="btn btn-primary btn-sm" onclick="saveVault()">Save to Vault</button>
                 </div>
 
                 <div class="card">
-                    <h3>Pending Vault Access Requests</h3>
+                    <h3>Pending Access Requests</h3>
                     <div id="consent-list"></div>
                 </div>
             </div>
@@ -422,152 +425,41 @@ curl -X POST \
                         </thead>
                         <tbody id="audit-table"></tbody>
                     </table>
-                    <div style="margin-top: 12px;">
-                        <button class="btn btn-secondary btn-sm" onclick="loadAudit()">Refresh</button>
-                    </div>
                 </div>
             </div>
 
             <div id="tab-knowledge" class="hidden">
                 <div class="card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                        <h3 style="margin-bottom: 0;">Knowledge Base</h3>
-                        <span id="knowledge-total" style="color: #8b8fa3; font-size: 13px;"></span>
-                    </div>
-                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 16px;">
-                        Project updates, decisions, learnings, and notes stored by your AI agents are listed here.
+                    <h3>Knowledge Base</h3>
+                    <p style="font-size: 13px; color: #8b8fa3; margin-bottom: 16px;">
+                        Structured knowledge stored by agents. Embedded for semantic search.
                     </p>
-
-                    <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
-                        <input type="text" id="knowledge-search" placeholder="Search by keyword..." style="flex: 1; min-width: 200px; padding: 8px 12px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; color: #e1e5ee; font-size: 13px;" />
-                        <select id="knowledge-category-filter" style="padding: 8px 12px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; color: #e1e5ee; font-size: 13px;">
+                    <div class="grid-2" style="margin-bottom: 16px;">
+                        <input type="text" id="knowledge-search" placeholder="Search knowledge..." oninput="searchKnowledge()" />
+                        <select id="knowledge-category-filter" onchange="searchKnowledge()">
                             <option value="">All Categories</option>
                         </select>
-                        <button class="btn btn-primary btn-sm" onclick="searchKnowledge()">Search</button>
-                        <button class="btn btn-secondary btn-sm" onclick="loadKnowledge()">Reset</button>
                     </div>
-
-                    <div id="knowledge-categories" style="display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap;"></div>
-
                     <div id="knowledge-list"></div>
-
-                    <div id="knowledge-pagination" style="display: flex; justify-content: center; gap: 8px; margin-top: 16px;"></div>
-                </div>
-
-                <div id="knowledge-detail-modal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center;">
-                    <div style="background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 12px; padding: 24px; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                            <h3 id="knowledge-detail-title" style="color: #7c8aff;"></h3>
-                            <button class="btn btn-secondary btn-sm" onclick="closeKnowledgeDetail()">Close</button>
-                        </div>
-                        <div id="knowledge-detail-body"></div>
-                    </div>
+                    <div id="knowledge-pagination" style="display: flex; gap: 8px; justify-content: center; margin-top: 16px;"></div>
                 </div>
             </div>
 
             <div id="tab-admin" class="hidden">
                 <div class="card">
-                    <h3>System Models (Global)</h3>
-                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">Add models here to make them available to all users.</p>
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label>Provider</label>
-                            <select id="admin-model-provider">
-                                <option value="openai">OpenAI</option>
-                                <option value="gemini">Gemini</option>
-                                <option value="anthropic">Anthropic</option>
-                                <option value="ollama">Ollama Cloud</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Model Name (ID)</label>
-                            <input type="text" id="admin-model-name" placeholder="gpt-4.1" />
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Display Name</label>
-                        <input type="text" id="admin-model-display" placeholder="GPT-4.1 Turbo" />
-                    </div>
-                    <button class="btn btn-primary btn-sm" onclick="addSystemModel()">Add System Model</button>
-                    
-                    <table style="margin-top: 20px;">
-                        <thead>
-                            <tr><th>Provider</th><th>Model ID</th><th>Display Name</th><th>Actions</th></tr>
-                        </thead>
-                        <tbody id="admin-models-table"></tbody>
-                    </table>
+                    <h3>System Administration</h3>
+                    <p>Admin tools will be listed here.</p>
                 </div>
-                
-                                <div class="card">
-                                    <h3>Vector DB Settings</h3>
-                                    <div class="form-group">
-                                        <label>Embedding Provider</label>
-                                        <select id="admin-setting-embed-provider" onchange="updateAdminSetting('embedding_provider', this.value)">
-                                            <option value="openai">OpenAI (text-embedding-3-small)</option>
-                                            <option value="ollama">Ollama Cloud (nomic-embed-text-v2-moe)</option>
-                                        </select>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="checkbox-group">
-                                            <input type="checkbox" id="admin-setting-auto-embed" onchange="updateAdminSetting('auto_embedding', this.checked)" />
-                                            Auto-embedding (Context & Knowledge)
-                                        </label>
-                                    </div>
-                                    <div class="grid-2">
-                                        <div class="form-group">
-                                            <label>Vector Search Top-K</label>
-                                            <input type="number" id="admin-setting-top-k" value="5" min="1" max="20" onchange="updateAdminSetting('vector_top_k', parseInt(this.value))" />
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Min Similarity Score (0.0 - 1.0)</label>
-                                            <input type="number" id="admin-setting-min-score" value="0.7" min="0" max="1" step="0.05" onchange="updateAdminSetting('vector_min_score', parseFloat(this.value))" />
-                                        </div>
-                                    </div>
-                                </div>
             </div>
 
             <div id="tab-settings" class="hidden">
                 <div class="card">
-                    <h3>LLM Keys</h3>
-                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">Configure your LLM provider API keys for the gateway.</p>
-                    <div class="form-group">
-                        <label>Provider</label>
-                        <select id="llm-provider">
-                            <option value="openai">OpenAI</option>
-                            <option value="gemini">Gemini</option>
-                            <option value="anthropic">Anthropic</option>
-                            <option value="ollama">Ollama Cloud</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>API Key</label>
-                        <input type="password" id="llm-api-key" placeholder="Enter your provider API key" />
-                    </div>
-                    <button class="btn btn-primary" onclick="saveLLMKey()">Save LLM Key</button>
-                    <div id="llm-key-status" style="margin-top: 12px;"></div>
-                </div>
-                <div class="card">
-                    <h3>Token Metrics</h3>
-                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">View your LLM usage metrics across providers.</p>
-                    <table>
-                        <thead>
-                            <tr><th>Provider</th><th>Model</th><th>Total Tokens</th><th>Request Count</th></tr>
-                        </thead>
-                        <tbody id="token-metrics-table"></tbody>
-                    </table>
-                    <div style="margin-top: 12px;">
-                        <button class="btn btn-secondary btn-sm" onclick="loadTokenMetrics()">Refresh</button>
-                    </div>
-                </div>
-                <div class="card">
-                    <h3>Data Export (GDPR)</h3>
-                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">Download all your data in JSON format.</p>
-                    <button class="btn btn-secondary" onclick="exportData()">Export All Data</button>
-                </div>
-                <div class="card">
-                    <h3>Delete Account</h3>
-                    <p style="color: #8b8fa3; font-size: 13px; margin-bottom: 12px;">Permanently delete your account and all associated data.</p>
-                    <button class="btn btn-danger" onclick="deleteAccount()">Delete Account</button>
+                    <h3>Data Management</h3>
+                    <button class="btn btn-secondary" onclick="exportData()">Export My Data (JSON)</button>
+                    <hr style="border: 0; border-top: 1px solid #2a2d3a; margin: 24px 0;">
+                    <h3 style="color: #ff4757;">Danger Zone</h3>
+                    <p style="font-size: 13px; color: #8b8fa3; margin-bottom: 12px;">Once you delete your account, there is no going back. Please be certain.</p>
+                    <button class="btn btn-danger" onclick="deleteAccount()">Delete My Account</button>
                 </div>
             </div>
         </div>
@@ -576,14 +468,20 @@ curl -X POST \
     <script>
         let currentUser = null;
 
-        function toggleTheme() {
-            document.body.classList.toggle('light-theme');
-            localStorage.setItem('theme', document.body.classList.contains('light-theme') ? 'light' : 'dark');
+        function initTheme() {
+            const theme = localStorage.getItem('theme') || 'dark';
+            if (theme === 'light') {
+                document.body.classList.add('light-theme');
+            }
         }
 
-        function initTheme() {
-            if (localStorage.getItem('theme') === 'light') {
+        function toggleTheme() {
+            if (document.body.classList.contains('light-theme')) {
+                document.body.classList.remove('light-theme');
+                localStorage.setItem('theme', 'dark');
+            } else {
                 document.body.classList.add('light-theme');
+                localStorage.setItem('theme', 'light');
             }
         }
 
@@ -602,7 +500,7 @@ curl -X POST \
                         console.error('Failed to parse user data:', text);
                         return;
                     }
-                    // ... rest of logic
+                    
                     document.getElementById('auth-screen').classList.add('hidden');
                     document.getElementById('dashboard').classList.remove('hidden');
                     document.getElementById('user-name').textContent = currentUser.display_name || currentUser.email;
@@ -610,92 +508,29 @@ curl -X POST \
                         document.getElementById('user-avatar').src = currentUser.avatar_url;
                     }
                     if (currentUser.is_admin) {
-                        console.log('User is admin, showing admin tab');
                         document.getElementById('tab-btn-admin').style.display = 'block';
                     }
                     loadKeys();
+                    loadLayers();
+                    loadConsentRequests();
+                    loadAudit();
                 }
             } catch (e) {
-                console.error('Init error:', e);
+                console.error('Init failed:', e);
             }
         }
 
-        function showTab(name) {
-            document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
-            document.getElementById('tab-' + name).classList.remove('hidden');
+        function showTab(tabId) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('[id^="tab-"]').forEach(t => t.classList.add('hidden'));
+            
             event.target.classList.add('active');
-            if (name === 'audit') loadAudit();
-            if (name === 'consent') loadConsentRequests();
-            if (name === 'context') loadContext();
-            if (name === 'knowledge') loadKnowledge();
-            if (name === 'settings') loadTokenMetrics();
-            if (name === 'admin') {
-                loadAdminModels();
-                loadAdminSettings();
-            }
-        }
-
-        async function loadAdminModels() {
-            const res = await fetch('/api/admin/models');
-            if (!res.ok) return;
-            const models = await res.json();
-            const tbody = document.getElementById('admin-models-table');
-            tbody.innerHTML = models.map(m => `
-                <tr>
-                    <td style="text-transform:uppercase;font-size:10px;font-weight:700;color:var(--accent);">${m.provider}</td>
-                    <td><code>${m.model_name}</code></td>
-                    <td>${m.display_name || m.model_name}</td>
-                    <td><button class="btn btn-danger btn-sm" onclick="deleteSystemModel('${m.id}')">Remove</button></td>
-                </tr>
-            `).join('');
-        }
-
-        async function addSystemModel() {
-            const provider = document.getElementById('admin-model-provider').value;
-            const model_name = document.getElementById('admin-model-name').value;
-            const display_name = document.getElementById('admin-model-display').value;
-            if (!model_name) return alert('Model name is required');
-            const res = await fetch('/api/admin/models', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ provider, model_name, display_name })
-            });
-            if (res.ok) {
-                document.getElementById('admin-model-name').value = '';
-                document.getElementById('admin-model-display').value = '';
-                loadAdminModels();
-            }
-        }
-
-        async function deleteSystemModel(id) {
-            if (!confirm('Are you sure?')) return;
-            await fetch(`/api/admin/models/${id}`, { method: 'DELETE' });
-            loadAdminModels();
-        }
-
-        async function loadAdminSettings() {
-            const res = await fetch('/api/admin/settings');
-            if (!res.ok) return;
-            const settings = await res.json();
-            document.getElementById('admin-setting-auto-embed').checked = settings.auto_embedding;
-            if (document.getElementById('admin-setting-top-k')) {
-                document.getElementById('admin-setting-top-k').value = settings.vector_top_k || 5;
-            }
-            if (document.getElementById('admin-setting-min-score')) {
-                document.getElementById('admin-setting-min-score').value = settings.vector_min_score || 0.7;
-            }
-            if (document.getElementById('admin-setting-embed-provider')) {
-                document.getElementById('admin-setting-embed-provider').value = settings.embedding_provider || 'openai';
-            }
-        }
-
-        async function updateAdminSetting(key, value) {
-            await fetch('/api/admin/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ key, value })
-            });
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            
+            if (tabId === 'keys') loadKeys();
+            if (tabId === 'consent') loadConsentRequests();
+            if (tabId === 'audit') loadAudit();
+            if (tabId === 'knowledge') loadKnowledge();
         }
 
         async function loadKeys() {
@@ -708,72 +543,114 @@ curl -X POST \
                     <td>${k.name}</td>
                     <td>
                         <span class="layer-tag layer-tag-0">L0</span>
-                        ${k.permissions.layer1 ? '<span class="layer-tag layer-tag-1">L1</span>' : ''}
-                        ${k.permissions.layer2 ? '<span class="layer-tag layer-tag-2">L2</span>' : ''}
+                        ${k.scopes.includes('layer1') ? '<span class="layer-tag layer-tag-1">L1</span>' : ''}
+                        ${k.scopes.includes('layer2') ? '<span class="layer-tag layer-tag-2">L2</span>' : ''}
                     </td>
-                    <td class="status-${k.status || 'active'}">${k.status || 'active'}</td>
+                    <td class="status-active">Active</td>
                     <td>${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never'}</td>
-                    <td>
-                        <button class="btn btn-danger btn-sm" onclick="revokeKey('${k.id}')">Revoke</button>
-                        <button class="btn btn-secondary btn-sm" onclick="deleteKey('${k.id}')">Delete</button>
-                    </td>
+                    <td><button class="btn btn-danger btn-sm" onclick="revokeKey('${k.id}')">Revoke</button></td>
                 </tr>
             `).join('');
         }
 
         async function createKey() {
             const name = document.getElementById('key-name').value;
-            if (!name) return alert('Please enter a key name');
-            const permissions = {
-                layer0: true,
-                layer1: document.getElementById('perm-layer1').checked,
-                layer2: document.getElementById('perm-layer2').checked
-            };
+            if (!name) return alert('Key name is required');
+            
+            const scopes = ['layer0'];
+            if (document.getElementById('perm-layer1').checked) scopes.push('layer1');
+            if (document.getElementById('perm-layer2').checked) scopes.push('layer2');
+            
             const res = await fetch('/api/keys', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, permissions })
+                body: JSON.stringify({ name, scopes })
             });
-            if (!res.ok) return alert('Failed to create key');
-            const data = await res.json();
-            document.getElementById('new-key-value').textContent = data.key;
-            document.getElementById('new-key-display').classList.remove('hidden');
-            document.getElementById('key-name').value = '';
-            loadKeys();
+            
+            if (res.ok) {
+                const data = await res.json();
+                document.getElementById('new-key-value').textContent = data.key;
+                document.getElementById('new-key-display').classList.remove('hidden');
+                document.getElementById('key-name').value = '';
+                loadKeys();
+            } else {
+                alert('Failed to create key');
+            }
+        }
+
+        async function revokeKey(id) {
+            if (!confirm('Are you sure you want to revoke this key?')) return;
+            const res = await fetch(`/api/keys/${id}`, { method: 'DELETE' });
+            if (res.ok) loadKeys();
         }
 
         function copyKey() {
             const key = document.getElementById('new-key-value').textContent;
             navigator.clipboard.writeText(key);
+            alert('Key copied to clipboard');
         }
 
-        async function revokeKey(id) {
-            if (!confirm('Revoke this API key?')) return;
-            await fetch(`/api/keys/${id}/revoke`, { method: 'POST' });
-            loadKeys();
-        }
+        async function loadLayers() {
+            const res0 = await fetch('/api/v0/context');
+            if (res0.ok) {
+                const data = await res0.json();
+                document.getElementById('l0-language').value = data.language || 'en';
+                document.getElementById('l0-timezone').value = data.timezone || 'UTC';
+                document.getElementById('l0-style').value = data.communication_style || 'balanced';
+            }
+            
+            const res2 = await fetch('/api/v2/context');
+            if (res2.ok) {
+                const data = await res2.json();
+                document.getElementById('l2-name').value = data.display_name || '';
+                document.getElementById('l2-location').value = data.location || '';
+                document.getElementById('l2-interests').value = (data.interests || []).join(', ');
+            }
 
-        async function deleteKey(id) {
-            if (!confirm('Delete this API key permanently?')) return;
-            await fetch(`/api/keys/${id}`, { method: 'DELETE' });
-            loadKeys();
-        }
-
-        async function loadContext() {
-            // We use session-based API calls through a proxy pattern
-            // For the dashboard, we'll show the data management UI
+            const res1 = await fetch('/api/v1/context');
+            if (res1.ok) {
+                const data = await res1.json();
+                document.getElementById('l1-goals').value = (data.active_goals || []).join('\n');
+                document.getElementById('l1-memories').value = (data.pinned_memories || []).join('\n');
+            }
         }
 
         async function saveLayer0() {
-            alert('Layer 0 data saved via API keys. Use the API to update context data.');
+            const language = document.getElementById('l0-language').value;
+            const timezone = document.getElementById('l0-timezone').value;
+            const communication_style = document.getElementById('l0-style').value;
+            
+            const res = await fetch('/api/v0/context', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ language, timezone, communication_style })
+            });
+            if (res.ok) alert('Layer 0 saved');
         }
 
         async function saveLayer1() {
-            alert('Layer 1 data saved via API keys. Use the API to update context data.');
+            const active_goals = document.getElementById('l1-goals').value.split('\n').filter(s => s.trim());
+            const pinned_memories = document.getElementById('l1-memories').value.split('\n').filter(s => s.trim());
+            
+            const res = await fetch('/api/v1/context', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active_goals, pinned_memories })
+            });
+            if (res.ok) alert('Layer 1 saved');
         }
 
         async function saveLayer2() {
-            alert('Layer 2 data saved via API keys. Use the API to update context data.');
+            const display_name = document.getElementById('l2-name').value;
+            const location = document.getElementById('l2-location').value;
+            const interests = document.getElementById('l2-interests').value.split(',').map(s => s.trim()).filter(s => s);
+            
+            const res = await fetch('/api/v2/context', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ display_name, location, interests })
+            });
+            if (res.ok) alert('Layer 2 saved');
         }
 
         async function loadConsentRequests() {
@@ -782,7 +659,6 @@ curl -X POST \
             const requests = await res.json();
             const container = document.getElementById('consent-list');
             
-            // Also load current vault keys (metadata only)
             const vaultRes = await fetch('/api/v3/context/dashboard');
             
             let keysHtml = '';
@@ -793,36 +669,36 @@ curl -X POST \
                         <div style="margin-top: 20px;">
                             <h4 style="font-size: 14px; color: #7c8aff; margin-bottom: 8px;">Stored Keys in Vault:</h4>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                \${vaultData.keys.map(k => \`
+                                ${vaultData.keys.map(k => `
                                     <div class="layer-tag layer-tag-1" style="background: #2ed5731a; color: #2ed573; border: 1px solid #2ed57333; display: flex; align-items: center; gap: 8px;">
-                                        \${k}
-                                        <span onclick="event.stopPropagation(); deleteVaultKey('\${k}')" style="cursor: pointer; font-weight: bold; font-size: 16px; line-height: 1; opacity: 0.6; padding: 0 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">&times;</span>
+                                        ${k}
+                                        <span onclick="event.stopPropagation(); deleteVaultKey('${k}')" style="cursor: pointer; font-weight: bold; font-size: 16px; line-height: 1; opacity: 0.6; padding: 0 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">&times;</span>
                                     </div>
-                                \`).join('')}
+                                `).join('')}
                             </div>
                         </div>
-                    \`;
+                    `;
                 }
             }
 
             if (requests.length === 0) {
                 container.innerHTML = '<p style="color: #8b8fa3; font-size: 13px;">No pending vault access requests.</p>' + keysHtml;
             } else {
-                container.innerHTML = requests.map(r => \`
+                container.innerHTML = requests.map(r => `
                     <div class="card consent-card" style="margin-bottom: 8px;">
                         <div class="consent-info">
-                            <strong>Reason:</strong> \${r.reason}<br/>
+                            <strong>Reason:</strong> ${r.reason}<br/>
                             <span style="color: #8b8fa3; font-size: 12px;">
-                                Requested: \${JSON.stringify(r.requested_data)} |
-                                <span class="badge badge-pending">\${r.status}</span>
+                                Requested: ${JSON.stringify(r.requested_data)} |
+                                <span class="badge badge-pending">${r.status}</span>
                             </span>
                         </div>
                         <div class="consent-actions">
-                            <button class="btn btn-primary btn-sm" onclick="approveConsent('\${r.id}')">Approve</button>
-                            <button class="btn btn-danger btn-sm" onclick="denyConsent('\${r.id}')">Deny</button>
+                            <button class="btn btn-primary btn-sm" onclick="approveConsent('${r.id}')">Approve</button>
+                            <button class="btn btn-danger btn-sm" onclick="denyConsent('${r.id}')">Deny</button>
                         </div>
                     </div>
-                \`).join('') + keysHtml;
+                `).join('') + keysHtml;
             }
         }
 
@@ -830,33 +706,29 @@ curl -X POST \
             const res = await fetch('/api/v3/approve', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ request_id: id, expires_in_hours: 24 })
+                body: JSON.stringify({ request_id: id })
             });
-            if (res.ok) {
-                const data = await res.json();
-                alert('Approved! Vault token: ' + data.vault_token);
-                loadConsentRequests();
-            }
+            if (res.ok) loadConsentRequests();
         }
 
         async function denyConsent(id) {
-            await fetch('/api/v3/deny', {
+            const res = await fetch('/api/v3/deny', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ request_id: id })
             });
-            loadConsentRequests();
+            if (res.ok) loadConsentRequests();
         }
 
         async function deleteVaultKey(keyName) {
-            if (!confirm(\`Are you sure you want to delete '\${keyName}' from your vault?\`)) return;
+            if (!confirm(`Are you sure you want to delete '${keyName}' from your vault?`)) return;
             
             try {
-                const res = await fetch(\`/api/v3/context/\${keyName}\`, {
+                const res = await fetch(`/api/v3/context/${keyName}`, {
                     method: 'DELETE'
                 });
                 if (res.ok) {
-                    loadConsentRequests(); // Refresh the list
+                    loadConsentRequests();
                 } else {
                     const err = await res.json();
                     alert(err.error || 'Failed to delete key');
@@ -872,12 +744,6 @@ curl -X POST \
             const value = document.getElementById('vault-value').value.trim();
             if (!key || !value) return alert('Key and value are required');
             
-            // Note: We need a dedicated endpoint for Vault saving as /api/v0/context is for Layer 0
-            // Since we don't have a direct PUT /api/v3/context for session users yet, 
-            // we'll implement the UI call and I'll add the backend route if missing.
-            // Actually, the backend has /api/v0/context but it only handles Layer0Update model.
-            // I will add a proper vault save endpoint in a moment.
-            
             const res = await fetch('/api/v3/context', { 
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -888,6 +754,7 @@ curl -X POST \
                 alert('Secret saved to Vault!');
                 document.getElementById('vault-key').value = '';
                 document.getElementById('vault-value').value = '';
+                loadConsentRequests();
             } else {
                 alert('Failed to save secret');
             }
@@ -920,7 +787,8 @@ curl -X POST \
 
         async function deleteAccount() {
             if (!confirm('Are you sure? This will permanently delete all your data.')) return;
-            if (prompt('Type DELETE to confirm') !== 'DELETE') return;
+            const confirmVal = prompt('Type DELETE to confirm');
+            if (confirmVal !== 'DELETE') return;
             await fetch('/api/account', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
@@ -942,6 +810,7 @@ curl -X POST \
             document.getElementById('knowledge-search').value = '';
             document.getElementById('knowledge-category-filter').value = '';
             knowledgeOffset = 0;
+            await fetchCategories();
             await fetchKnowledge();
         }
 
@@ -950,191 +819,76 @@ curl -X POST \
             await fetchKnowledge();
         }
 
+        async function fetchCategories() {
+            const res = await fetch('/api/knowledge/categories');
+            if (res.ok) {
+                const categories = await res.json();
+                const filter = document.getElementById('knowledge-category-filter');
+                filter.innerHTML = '<option value="">All Categories</option>' + 
+                    categories.map(c => `<option value="${c.category}">${c.category} (${c.count})</option>`).join('');
+            }
+        }
+
         async function fetchKnowledge() {
-            const keyword = document.getElementById('knowledge-search').value.trim();
+            const search = document.getElementById('knowledge-search').value;
             const category = document.getElementById('knowledge-category-filter').value;
             let url = `/api/knowledge?limit=${knowledgeLimit}&offset=${knowledgeOffset}`;
-            if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+            if (search) url += `&query=${encodeURIComponent(search)}`;
             if (category) url += `&category=${encodeURIComponent(category)}`;
 
             const res = await fetch(url);
-            if (!res.ok) return;
-            const data = await res.json();
-            knowledgeData = data.entries || [];
-
-            document.getElementById('knowledge-total').textContent = `Total: ${data.total} entries`;
-
-            const select = document.getElementById('knowledge-category-filter');
-            const currentVal = select.value;
-            select.innerHTML = '<option value="">All Categories</option>';
-            (data.categories || []).forEach(c => {
-                select.innerHTML += `<option value="${c.category}" ${c.category === currentVal ? 'selected' : ''}>${c.category} (${c.count})</option>`;
-            });
-
-            const catContainer = document.getElementById('knowledge-categories');
-            catContainer.innerHTML = (data.categories || []).map(c => {
-                const colors = {
-                    'project_update': '#7c8aff', 'code_change': '#2ed573', 'decision': '#ffa502',
-                    'learning': '#ff6b81', 'todo': '#ff4757', 'insight': '#1e90ff',
-                    'architecture': '#a55eea', 'bug_fix': '#ff6348', 'feature': '#2ed573',
-                    'note': '#8b8fa3', 'uncategorized': '#6b6f82'
-                };
-                const color = colors[c.category] || '#7c8aff';
-                return `<span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; background: ${color}1a; color: ${color}; cursor: pointer;" onclick="filterByCategory('${c.category}')">${c.category} (${c.count})</span>`;
-            }).join('');
-
-            renderKnowledgeList();
-            renderKnowledgePagination(data.total);
+            if (res.ok) {
+                const data = await res.json();
+                knowledgeData = data.entries;
+                renderKnowledge(data.entries);
+                renderPagination(data.total);
+            }
         }
 
-        function filterByCategory(cat) {
-            document.getElementById('knowledge-category-filter').value = cat;
-            searchKnowledge();
-        }
-
-        function renderKnowledgeList() {
-            const container = document.getElementById('knowledge-list');
-            if (knowledgeData.length === 0) {
-                container.innerHTML = '<p style="color: #8b8fa3; font-size: 13px; text-align: center; padding: 32px;">No entries yet. Knowledge will appear here when your AI agents send data using the push_knowledge tool.</p>';
+        function renderKnowledge(entries) {
+            const list = document.getElementById('knowledge-list');
+            if (entries.length === 0) {
+                list.innerHTML = '<p style="color: #8b8fa3; padding: 20px; text-align: center;">No knowledge entries found.</p>';
                 return;
             }
-
-            container.innerHTML = knowledgeData.map(entry => {
-                const colors = {
-                    'project_update': '#7c8aff', 'code_change': '#2ed573', 'decision': '#ffa502',
-                    'learning': '#ff6b81', 'todo': '#ff4757', 'insight': '#1e90ff',
-                    'architecture': '#a55eea', 'bug_fix': '#ff6348', 'feature': '#2ed573',
-                    'note': '#8b8fa3', 'uncategorized': '#6b6f82'
-                };
-                const color = colors[entry.category] || '#7c8aff';
-                const tags = (entry.tags || []).map(t => `<span style="padding: 2px 6px; background: #2a2d3a; border-radius: 4px; font-size: 10px; color: #8b8fa3;">${t}</span>`).join(' ');
-                const date = entry.created_at ? new Date(entry.created_at).toLocaleString() : '';
-                const preview = entry.summary || (entry.content.length > 150 ? entry.content.substring(0, 150) + '...' : entry.content);
-
-                return `
-                <div class="card" style="margin-bottom: 8px; cursor: pointer;" onclick="showKnowledgeDetail('${entry.id}')">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                        <div style="flex: 1;">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                                <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: ${color}1a; color: ${color};">${entry.category}</span>
-                                ${entry.subcategory ? `<span style="color: #6b6f82; font-size: 11px;">${entry.subcategory}</span>` : ''}
-                                ${entry.source_project ? `<span style="color: #7c8aff; font-size: 11px;">&#128193; ${entry.source_project}</span>` : ''}
-                            </div>
-                            <p style="font-size: 13px; color: #e1e5ee; line-height: 1.5; margin-bottom: 6px;">${preview}</p>
-                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                ${tags}
-                                <span style="color: #6b6f82; font-size: 11px; margin-left: auto;">${entry.source_agent ? entry.source_agent + ' | ' : ''}${date}</span>
-                            </div>
-                        </div>
-                        <button class="btn btn-danger btn-sm" style="margin-left: 12px; flex-shrink: 0;" onclick="event.stopPropagation(); deleteKnowledge('${entry.id}')">Delete</button>
+            list.innerHTML = entries.map(e => `
+                <div class="card" style="margin-bottom: 12px; border-left: 4px solid var(--accent);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                        <span class="badge badge-pending" style="background: var(--accent); color: white;">${e.category}</span>
+                        <span style="font-size: 11px; color: #8b8fa3;">${new Date(e.created_at).toLocaleString()}</span>
                     </div>
-                </div>`;
-            }).join('');
+                    <div style="font-size: 14px; margin-bottom: 8px;">${e.content}</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                        ${(e.tags || []).map(t => `<span class="layer-tag layer-tag-2" style="font-size: 10px;">#${t}</span>`).join('')}
+                    </div>
+                    <div style="margin-top: 8px; font-size: 11px; color: #8b8fa3; text-align: right;">
+                        Source: ${e.agent_name || 'System'} | Project: ${e.project_id || 'Global'}
+                    </div>
+                </div>
+            `).join('');
         }
 
-        function renderKnowledgePagination(total) {
-            const container = document.getElementById('knowledge-pagination');
-            if (total <= knowledgeLimit) { container.innerHTML = ''; return; }
-            const pages = Math.ceil(total / knowledgeLimit);
-            const currentPage = Math.floor(knowledgeOffset / knowledgeLimit);
-            let html = '';
-            for (let i = 0; i < pages && i < 10; i++) {
-                html += `<button class="btn btn-sm ${i === currentPage ? 'btn-primary' : 'btn-secondary'}" onclick="goKnowledgePage(${i})">${i + 1}</button>`;
+        function renderPagination(total) {
+            const pagination = document.getElementById('knowledge-pagination');
+            const totalPages = Math.ceil(total / knowledgeLimit);
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
             }
-            container.innerHTML = html;
+            const currentPage = Math.floor(knowledgeOffset / knowledgeLimit) + 1;
+            let html = '';
+            for (let i = 1; i <= totalPages; i++) {
+                html += `<button class="btn btn-secondary btn-sm ${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
+            }
+            pagination.innerHTML = html;
         }
 
-        function goKnowledgePage(page) {
-            knowledgeOffset = page * knowledgeLimit;
+        function changePage(page) {
+            knowledgeOffset = (page - 1) * knowledgeLimit;
             fetchKnowledge();
         }
 
-        function showKnowledgeDetail(id) {
-            const entry = knowledgeData.find(e => e.id === id);
-            if (!entry) return;
-
-            const colors = {
-                'project_update': '#7c8aff', 'code_change': '#2ed573', 'decision': '#ffa502',
-                'learning': '#ff6b81', 'todo': '#ff4757', 'insight': '#1e90ff',
-                'architecture': '#a55eea', 'bug_fix': '#ff6348', 'feature': '#2ed573',
-                'note': '#8b8fa3', 'uncategorized': '#6b6f82'
-            };
-            const color = colors[entry.category] || '#7c8aff';
-            const tags = (entry.tags || []).map(t => `<span style="padding: 2px 8px; background: #2a2d3a; border-radius: 4px; font-size: 11px; color: #8b8fa3;">${t}</span>`).join(' ');
-            const date = entry.created_at ? new Date(entry.created_at).toLocaleString() : '';
-
-            document.getElementById('knowledge-detail-title').innerHTML = `<span style="padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; background: ${color}1a; color: ${color}; margin-right: 8px;">${entry.category}</span> ${entry.subcategory || ''}`;
-
-            document.getElementById('knowledge-detail-body').innerHTML = `
-                ${entry.summary ? `<div style="background: #0f1117; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid ${color};"><strong style="color: #8b8fa3; font-size: 12px;">Summary:</strong><br/><span style="font-size: 14px;">${entry.summary}</span></div>` : ''}
-                <div style="margin-bottom: 12px;">
-                    <strong style="color: #8b8fa3; font-size: 12px;">Content:</strong>
-                    <pre style="background: #0f1117; padding: 12px; border-radius: 8px; margin-top: 4px; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; line-height: 1.5; border: 1px solid #2a2d3a;">${entry.content}</pre>
-                </div>
-                <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #8b8fa3;">
-                    ${entry.source_project ? `<span>Project: <strong style="color: #7c8aff;">${entry.source_project}</strong></span>` : ''}
-                    ${entry.source_agent ? `<span>Agent: <strong style="color: #e1e5ee;">${entry.source_agent}</strong></span>` : ''}
-                    <span>Date: ${date}</span>
-                </div>
-                ${tags ? `<div style="margin-top: 12px;">${tags}</div>` : ''}
-            `;
-
-            const modal = document.getElementById('knowledge-detail-modal');
-            modal.classList.remove('hidden');
-            modal.style.display = 'flex';
-        }
-
-        function closeKnowledgeDetail() {
-            const modal = document.getElementById('knowledge-detail-modal');
-            modal.classList.add('hidden');
-            modal.style.display = 'none';
-        }
-
-        async function deleteKnowledge(id) {
-            if (!confirm('Are you sure you want to delete this knowledge entry?')) return;
-            const res = await fetch(`/api/knowledge/${id}`, { method: 'DELETE' });
-            if (res.ok) {
-                fetchKnowledge();
-            } else {
-                alert('Failed to delete the entry.');
-            }
-        }
-
-        async function saveLLMKey() {
-            const provider = document.getElementById('llm-provider').value;
-            const apiKey = document.getElementById('llm-api-key').value;
-            if (!apiKey) return alert('Please enter an API key');
-            const res = await fetch('/api/llm/keys', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ provider, api_key: apiKey })
-            });
-            const status = document.getElementById('llm-key-status');
-            if (res.ok) {
-                status.innerHTML = '<div class="alert alert-info">LLM key saved successfully.</div>';
-                document.getElementById('llm-api-key').value = '';
-            } else {
-                status.innerHTML = '<div class="alert alert-warning">Failed to save LLM key.</div>';
-            }
-        }
-
-        async function loadTokenMetrics() {
-            const res = await fetch('/api/llm/usage');
-            if (!res.ok) return;
-            const data = await res.json();
-            const tbody = document.getElementById('token-metrics-table');
-            const entries = data.usage || data || [];
-            tbody.innerHTML = (Array.isArray(entries) ? entries : []).map(e => `
-                <tr>
-                    <td>${e.provider || '-'}</td>
-                    <td>${e.model || '-'}</td>
-                    <td>${e.total_tokens || 0}</td>
-                    <td>${e.request_count || 0}</td>
-                </tr>
-            `).join('') || '<tr><td colspan="4" style="color: #8b8fa3; text-align: center;">No usage data yet.</td></tr>';
-        }
-
-        init();
+        window.onload = init;
     </script>
 </body>
 </html>
