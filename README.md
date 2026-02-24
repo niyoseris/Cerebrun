@@ -27,7 +27,7 @@ Most AI interactions today are fragmented—each model has its own "vacuum" of c
 This project is **Open Source**. You are free to view, study, and contribute to the code.
 
 ### Commercial Usage & Intellectual Property
-**IMPORTANT:** While the source code is public, all **Intellectual Property (IP)** rights and ownership remain with the original author. **Commercial use, redistribution, or modification for commercial purposes is strictly prohibited** without explicit written permission from the owner.
+**IMPORTANT:** While the source code is public, all **Intellectual Property (IP)** rights and ownership—including the **source code**, **underlying concepts**, **architecture**, and **innovative methodologies**—remain exclusively with the original author. **Commercial use, redistribution, or modification for commercial purposes is strictly prohibited** without explicit written permission from the owner.
 
 ---
 © 2026 Cerebrun. All rights reserved.
