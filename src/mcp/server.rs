@@ -348,6 +348,21 @@ async fn execute_tool(
                 "message": "Vault access request sent. User must approve before data can be accessed."
             }))
         }
+        "get_vault_data" => {
+            let vault_token = arguments.get("vault_token").and_then(|v| v.as_str())
+                .ok_or("Missing 'vault_token' argument")?;
+            
+            let mut headers = axum::http::HeaderMap::new();
+            headers.insert("X-Vault-Token", vault_token.parse().map_err(|_| "Invalid token format")?);
+            
+            let res = crate::api::vault::get_vault_context(
+                axum::extract::State(state.clone()),
+                agent.clone(),
+                headers,
+            ).await.map_err(|e| e.to_string())?;
+            
+            Ok(res.0)
+        }
 
         "search_context" => {
             if !agent.has_permission("layer1") {

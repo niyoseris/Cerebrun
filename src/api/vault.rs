@@ -102,6 +102,23 @@ pub async fn get_vault_context(
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized("Missing X-Vault-Token header".to_string()))?;
 
+    // Special case for dashboard to see key names (not values)
+    if vault_token == "metadata-only" {
+        let vault_data = db::vault::get_vault(&state.pool, agent.api_key.user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("No vault data found".to_string()))?;
+
+        let key = vault_crypto::derive_vault_key(&state.config.session_secret);
+        let decrypted = vault_crypto::decrypt_vault_data(&vault_data.encrypted_data, &key)
+            .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
+
+        let all_data: serde_json::Value = serde_json::from_slice(&decrypted)
+            .map_err(|e| AppError::Internal(format!("Invalid vault data: {}", e)))?;
+        
+        let keys: Vec<String> = all_data.as_object().map(|obj| obj.keys().cloned().collect()).unwrap_or_default();
+        return Ok(Json(json!({ "keys": keys })));
+    }
+
     let token_hash = sha256_hash(vault_token);
 
     let consent = db::vault::validate_vault_token(&state.pool, &token_hash, agent.api_key.id)

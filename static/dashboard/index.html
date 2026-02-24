@@ -772,25 +772,46 @@ curl -X POST \
             if (!res.ok) return;
             const requests = await res.json();
             const container = document.getElementById('consent-list');
-            if (requests.length === 0) {
-                container.innerHTML = '<p style="color: #8b8fa3; font-size: 13px;">No pending vault access requests.</p>';
-                return;
+            
+            // Also load current vault keys (metadata only)
+            const vaultRes = await fetch('/api/v3/context', {
+                headers: { 'X-Vault-Token': 'metadata-only' }
+            });
+            
+            let keysHtml = '';
+            if (vaultRes.ok) {
+                const vaultData = await vaultRes.json();
+                if (vaultData.keys && vaultData.keys.length > 0) {
+                    keysHtml = `
+                        <div style="margin-top: 20px;">
+                            <h4 style="font-size: 14px; color: #7c8aff; margin-bottom: 8px;">Stored Keys in Vault:</h4>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                ${vaultData.keys.map(k => `<span class="layer-tag layer-tag-1" style="background: #2ed5731a; color: #2ed573; border: 1px solid #2ed57333;">${k}</span>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
             }
-            container.innerHTML = requests.map(r => `
-                <div class="card consent-card" style="margin-bottom: 8px;">
-                    <div class="consent-info">
-                        <strong>Reason:</strong> ${r.reason}<br/>
-                        <span style="color: #8b8fa3; font-size: 12px;">
-                            Requested: ${JSON.stringify(r.requested_data)} |
-                            <span class="badge badge-pending">${r.status}</span>
-                        </span>
+
+            if (requests.length === 0) {
+                container.innerHTML = '<p style="color: #8b8fa3; font-size: 13px;">No pending vault access requests.</p>' + keysHtml;
+            } else {
+                container.innerHTML = requests.map(r => `
+                    <div class="card consent-card" style="margin-bottom: 8px;">
+                        <div class="consent-info">
+                            <strong>Reason:</strong> ${r.reason}<br/>
+                            <span style="color: #8b8fa3; font-size: 12px;">
+                                Requested: ${JSON.stringify(r.requested_data)} |
+                                <span class="badge badge-pending">${r.status}</span>
+                            </span>
+                        </div>
+                        <div class="consent-actions">
+                            <button class="btn btn-primary btn-sm" onclick="approveConsent('${r.id}')">Approve</button>
+                            <button class="btn btn-danger btn-sm" onclick="denyConsent('${r.id}')">Deny</button>
+                        </div>
                     </div>
-                    <div class="consent-actions">
-                        <button class="btn btn-primary btn-sm" onclick="approveConsent('${r.id}')">Approve</button>
-                        <button class="btn btn-danger btn-sm" onclick="denyConsent('${r.id}')">Deny</button>
-                    </div>
-                </div>
-            `).join('');
+                `).join('') + keysHtml;
+            }
         }
 
         async function approveConsent(id) {
