@@ -774,9 +774,7 @@ curl -X POST \
             const container = document.getElementById('consent-list');
             
             // Also load current vault keys (metadata only)
-            const vaultRes = await fetch('/api/v3/context', {
-                headers: { 'X-Vault-Token': 'metadata-only' }
-            });
+            const vaultRes = await fetch('/api/v3/context/dashboard');
             
             let keysHtml = '';
             if (vaultRes.ok) {
