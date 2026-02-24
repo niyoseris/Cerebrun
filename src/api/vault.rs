@@ -208,3 +208,39 @@ pub async fn get_pending_consents(
     let requests = db::vault::get_pending_consent_requests(&state.pool, session.user.id).await?;
     Ok(Json(serde_json::to_value(requests).unwrap()))
 }
+
+pub async fn delete_vault_key(
+    State(state): State<AppState>,
+    session: SessionUser,
+    axum::extract::Path(key_name): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let vault_data = db::vault::get_vault(&state.pool, session.user.id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("No vault data found".to_string()))?;
+
+    let key = vault_crypto::derive_vault_key(&state.config.session_secret);
+    let decrypted = vault_crypto::decrypt_vault_data(&vault_data.encrypted_data, &key)
+        .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
+
+    let mut all_data: serde_json::Value = serde_json::from_slice(&decrypted)
+        .map_err(|e| AppError::Internal(format!("Invalid vault data: {}", e)))?;
+    
+    if let Some(obj) = all_data.as_object_mut() {
+        if obj.remove(&key_name).is_some() {
+            let encrypted = vault_crypto::encrypt_vault_data(&serde_json::to_vec(&all_data).unwrap(), &key)
+                .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
+            
+            let key_hash = sha256_hash(&state.config.session_secret);
+            db::vault::upsert_vault(&state.pool, session.user.id, &key_hash, &encrypted).await?;
+
+            let _ = db::audit::log_access(
+                &state.pool, session.user.id, None,
+                "delete_vault_key", Some("3"), true, None, None, Some(&serde_json::Value::String(key_name.clone())),
+            ).await;
+
+            return Ok(Json(json!({"status": "ok"})));
+        }
+    }
+
+    Err(AppError::NotFound(format!("Key '{}' not found in vault", key_name)))
+}

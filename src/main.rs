@@ -74,6 +74,7 @@ async fn main() {
         .route("/api/v3/deny", post(api::vault::deny_vault_request))
         .route("/api/v3/context", get(api::vault::get_vault_context))
         .route("/api/v3/context/dashboard", get(api::vault::get_vault_context_dashboard))
+        .route("/api/v3/context/:key", delete(api::vault::delete_vault_key))
         .route("/api/v3/context", put(api::vault::put_vault_context))
         .route("/api/keys", get(api::keys::list_keys))
         .route("/api/keys", post(api::keys::create_key))

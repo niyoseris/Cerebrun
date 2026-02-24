@@ -784,12 +784,36 @@ curl -X POST \
                         <div style="margin-top: 20px;">
                             <h4 style="font-size: 14px; color: #7c8aff; margin-bottom: 8px;">Stored Keys in Vault:</h4>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                ${vaultData.keys.map(k => `<span class="layer-tag layer-tag-1" style="background: #2ed5731a; color: #2ed573; border: 1px solid #2ed57333;">${k}</span>`).join('')}
+                                ${vaultData.keys.map(k => `
+                                    <div class="layer-tag layer-tag-1" style="background: #2ed5731a; color: #2ed573; border: 1px solid #2ed57333; display: flex; align-items: center; gap: 8px;">
+                                        ${k}
+                                        <span onclick="deleteVaultKey('${k}')" style="cursor: pointer; font-weight: bold; font-size: 16px; line-height: 1; opacity: 0.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">&times;</span>
+                                    </div>
+                                `).join('')}
                             </div>
                         </div>
                     `;
                 }
             }
+
+        async function deleteVaultKey(keyName) {
+            if (!confirm(`Are you sure you want to delete '${keyName}' from your vault?`)) return;
+            
+            try {
+                const res = await fetch(`/api/v3/context/${keyName}`, {
+                    method: 'DELETE'
+                });
+                if (res.ok) {
+                    loadConsents(); // Refresh the list
+                } else {
+                    const err = await res.json();
+                    alert(err.error || 'Failed to delete key');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Error deleting key');
+            }
+        }
 
             if (requests.length === 0) {
                 container.innerHTML = '<p style="color: #8b8fa3; font-size: 13px;">No pending vault access requests.</p>' + keysHtml;
