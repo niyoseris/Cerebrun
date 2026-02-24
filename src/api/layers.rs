@@ -196,13 +196,18 @@ pub async fn put_layer2(
     })))
 }
 
-pub async fn get_me(session: SessionUser) -> Json<serde_json::Value> {
-    let user = session.user;
-    Json(json!({
-        "id": user.id,
-        "email": user.email,
-        "display_name": user.display_name,
-        "avatar_url": user.avatar_url,
-        "is_admin": user.is_admin,
-    }))
+pub async fn get_me(session: Option<SessionUser>) -> Json<serde_json::Value> {
+    match session {
+        Some(s) => {
+            let user = s.user;
+            Json(json!({
+                "id": user.id,
+                "email": user.email,
+                "display_name": user.display_name,
+                "avatar_url": user.avatar_url,
+                "is_admin": user.is_admin,
+            }))
+        }
+        None => Json(json!(null)),
+    }
 }

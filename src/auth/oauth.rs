@@ -35,12 +35,8 @@ use crate::AppState;
 
 fn get_redirect_uri(headers: &HeaderMap, config: &crate::config::AppConfig) -> String {
     if let Some(host) = headers.get("host").and_then(|v| v.to_str().ok()) {
-        let scheme = if host.contains("localhost") || host.contains("127.0.0.1") {
-            "http"
-        } else {
-            "https"
-        };
-        format!("{}://{}/auth/google/callback", scheme, host)
+        let final_scheme = if host.contains("localhost") || host.contains("127.0.0.1") { "http" } else { "https" };
+        format!("{}://{}/auth/google/callback", final_scheme, host)
     } else {
         config.google_redirect_uri.clone()
     }
@@ -54,6 +50,7 @@ pub async fn google_auth(
     let state_hash = sha256_hash(&csrf_state);
 
     let redirect_uri = get_redirect_uri(&headers, &state.config);
+    tracing::info!("Google Auth Start - Redirect URI: {}", redirect_uri);
 
     sqlx::query(
         "INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ((SELECT id FROM users LIMIT 0), $1, NOW() + INTERVAL '10 minutes') ON CONFLICT DO NOTHING"
@@ -82,7 +79,7 @@ pub async fn google_auth(
     );
 
     let auth_url = format!(
-        "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=openid%20email%20profile&state={}&access_type=offline",
+        "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=openid%20email%20profile&state={}&access_type=offline&prompt=consent",
         state.config.google_client_id,
         urlencoding(&redirect_uri),
         csrf_state
@@ -103,6 +100,8 @@ pub async fn google_callback(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
+    tracing::info!("Google Callback - Cookies: {}", cookie_header);
+
     let stored_state = cookie_header
         .split(';')
         .filter_map(|s| s.trim().strip_prefix("oauth_state="))
@@ -119,6 +118,9 @@ pub async fn google_callback(
         .next()
         .map(|s| s.to_string())
         .unwrap_or_else(|| get_redirect_uri(&headers, &state.config));
+    
+    tracing::info!("Google Callback - Redirect URI: {}", redirect_uri);
+    tracing::info!("Google Callback - State: {:?}", params.state);
 
     let token_response: GoogleTokenResponse = reqwest::Client::new()
         .post("https://oauth2.googleapis.com/token")

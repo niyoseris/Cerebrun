@@ -24,10 +24,10 @@ impl FromRequestParts<AppState> for SessionUser {
     ) -> Result<Self, Self::Rejection> {
         let pool = state.pool.clone();
 
-        let cookie_header = parts.headers
-            .get(http::header::COOKIE)
-            .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| AppError::Unauthorized("No session cookie".to_string()))?;
+        let cookie_header = match parts.headers.get(http::header::COOKIE).and_then(|v| v.to_str().ok()) {
+            Some(c) => c,
+            None => return Err(AppError::Unauthorized("No session cookie".to_string())),
+        };
 
         let session_token = cookie_header
             .split(';')

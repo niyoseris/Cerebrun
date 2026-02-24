@@ -591,9 +591,18 @@ curl -X POST \
             initTheme();
             try {
                 const res = await fetch('/auth/me');
+                console.log('Auth Me status:', res.status);
                 if (res.ok) {
-                    currentUser = await res.json();
-                    console.log('Current User:', currentUser);
+                    const text = await res.text();
+                    console.log('Auth Me response:', text);
+                    if (!text || text === 'null') return;
+                    try {
+                        currentUser = JSON.parse(text);
+                    } catch (e) {
+                        console.error('Failed to parse user data:', text);
+                        return;
+                    }
+                    // ... rest of logic
                     document.getElementById('auth-screen').classList.add('hidden');
                     document.getElementById('dashboard').classList.remove('hidden');
                     document.getElementById('user-name').textContent = currentUser.display_name || currentUser.email;
@@ -603,12 +612,12 @@ curl -X POST \
                     if (currentUser.is_admin) {
                         console.log('User is admin, showing admin tab');
                         document.getElementById('tab-btn-admin').style.display = 'block';
-                    } else {
-                        console.log('User is NOT admin');
                     }
                     loadKeys();
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.error('Init error:', e);
+            }
         }
 
         function showTab(name) {
