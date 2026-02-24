@@ -787,7 +787,7 @@ curl -X POST \
                                 ${vaultData.keys.map(k => `
                                     <div class="layer-tag layer-tag-1" style="background: #2ed5731a; color: #2ed573; border: 1px solid #2ed57333; display: flex; align-items: center; gap: 8px;">
                                         ${k}
-                                        <span onclick="deleteVaultKey('${k}')" style="cursor: pointer; font-weight: bold; font-size: 16px; line-height: 1; opacity: 0.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">&times;</span>
+                                        <span onclick="event.stopPropagation(); deleteVaultKey('${k}')" style="cursor: pointer; font-weight: bold; font-size: 16px; line-height: 1; opacity: 0.6; padding: 0 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">&times;</span>
                                     </div>
                                 `).join('')}
                             </div>
