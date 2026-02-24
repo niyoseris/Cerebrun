@@ -178,25 +178,25 @@ pub async fn put_vault_context(
     };
 
     if let Some(obj) = new_data.as_object() {
+        let keys: Vec<String> = obj.keys().cloned().collect();
         if let Some(current_obj) = current_data.as_object_mut() {
             for (k, v) in obj {
                 current_obj.insert(k.clone(), v.clone());
             }
         }
+        
+        let key = vault_crypto::derive_vault_key(&state.config.session_secret);
+        let encrypted = vault_crypto::encrypt_vault_data(&serde_json::to_vec(&current_data).unwrap(), &key)
+            .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
+        
+        let key_hash = sha256_hash(&state.config.session_secret);
+        db::vault::upsert_vault(&state.pool, session.user.id, &key_hash, &encrypted).await?;
+
+        let _ = db::audit::log_access(
+            &state.pool, session.user.id, None,
+            "update_vault", Some("3"), true, None, None, Some(&serde_json::to_value(keys).unwrap()),
+        ).await;
     }
-
-    let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-    let encrypted = vault_crypto::encrypt_vault_data(&serde_json::to_vec(&current_data).unwrap(), &key)
-        .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
-    
-    let key_hash = sha256_hash(&state.config.session_secret);
-
-    db::vault::upsert_vault(&state.pool, session.user.id, &key_hash, &encrypted).await?;
-
-    let _ = db::audit::log_access(
-        &state.pool, session.user.id, None,
-        "update_vault", Some("3"), true, None, None, None,
-    ).await;
 
     Ok(Json(json!({"status": "ok"})))
 }
