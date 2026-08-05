@@ -10,6 +10,7 @@ pub mod llm_usage;
 pub mod knowledge;
 pub mod embeddings;
 pub mod debates;
+pub mod versions;
 pub mod system;
 
 pub use pool::*;

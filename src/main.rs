@@ -129,7 +129,7 @@ async fn health_check() -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({
         "status": "healthy",
         "service": "user-context-mcp",
-        "version": "0.6.0"
+        "version": "0.7.0"
     }))
 }
 

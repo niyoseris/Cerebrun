@@ -295,6 +295,65 @@ pub fn list_tools() -> Value {
                     },
                     "required": ["debate_id"]
                 }
+            },
+            {
+                "name": "get_version_history",
+                "description": concat!(
+                    "Get version history for a knowledge entry or context layer. ",
+                    "Shows who changed what, when, and the full content snapshot at each version. ",
+                    "Use this when the user asks about the history of a knowledge entry or context change. ",
+                    "For knowledge entries, pass content_type='knowledge' and content_id=<knowledge UUID>. ",
+                    "For context layers, pass content_type='layer0'/'layer1'/'layer2'/'vault' and content_id=<field name>."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content_type": { "type": "string", "enum": ["knowledge", "layer0", "layer1", "layer2", "vault", "debate_message"], "description": "Type of content" },
+                        "content_id": { "type": "string", "description": "Content identifier (UUID for knowledge, field name for layers)" },
+                        "limit": { "type": "integer", "description": "Max versions to return (default 20)", "default": 20 }
+                    },
+                    "required": ["content_type", "content_id"]
+                }
+            },
+            {
+                "name": "delete_knowledge",
+                "description": concat!(
+                    "Delete a knowledge entry. This is a SOFT DELETE — the entry is hidden but version history is preserved. ",
+                    "IMPORTANT: Before deleting, show the user the full content of the entry and ask for confirmation. ",
+                    "Tell the user exactly what will be deleted (show the content) and wait for their explicit approval. ",
+                    "If the user also wants to permanently delete the version history, set force_purge=true (requires a SECOND confirmation from the user)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "knowledge_id": { "type": "string", "description": "The knowledge entry UUID to delete" },
+                        "confirm": { "type": "boolean", "description": "Must be true to confirm deletion. Show content to user first." },
+                        "force_purge": { "type": "boolean", "description": "If true, also permanently delete all version history for this entry. Requires explicit second confirmation from user." }
+                    },
+                    "required": ["knowledge_id", "confirm"]
+                }
+            },
+            {
+                "name": "update_knowledge",
+                "description": concat!(
+                    "Update an existing knowledge entry. The previous version is automatically saved in version history. ",
+                    "Show the user the current content and the proposed changes, and get their confirmation before updating. ",
+                    "You can update content, summary, category, subcategory, tags, and source_project. ",
+                    "Only fields you provide will be changed; omitted fields remain unchanged."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "knowledge_id": { "type": "string", "description": "The knowledge entry UUID to update" },
+                        "content": { "type": "string", "description": "New content (optional if only updating metadata)" },
+                        "summary": { "type": "string", "description": "New summary (optional)" },
+                        "category": { "type": "string", "description": "New category (optional)" },
+                        "subcategory": { "type": "string", "description": "New subcategory (optional)" },
+                        "tags": { "type": "array", "items": { "type": "string" }, "description": "New tags (optional)" },
+                        "source_project": { "type": "string", "description": "New source project (optional)" }
+                    },
+                    "required": ["knowledge_id"]
+                }
             }
         ]
     })

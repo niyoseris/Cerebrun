@@ -54,7 +54,7 @@ pub async fn handle_mcp(
                 },
                 "serverInfo": {
                     "name": "cerebrun-mcp",
-                    "version": "0.6.0"
+                    "version": "0.7.0"
                 },
                 "instructions": concat!(
                     "You are connected to Cerebrun, the user's Digital Self MCP server. ",
@@ -1306,6 +1306,211 @@ async fn execute_tool(
                 "consensus_reached": !force,
                 "reason": reason,
                 "message": if force { "Debate force-closed by user." } else { "Debate concluded: all participants agreed on completion criteria." }
+            }))
+        }
+
+        "get_version_history" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required".to_string());
+            }
+
+            let content_type = arguments.get("content_type").and_then(|v| v.as_str())
+                .ok_or("Missing 'content_type' argument")?;
+            let content_id = arguments.get("content_id").and_then(|v| v.as_str())
+                .ok_or("Missing 'content_id' argument")?;
+            let limit = arguments.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+
+            let versions = db::versions::get_versions(
+                &state.pool, user_id, content_type, content_id, limit,
+            ).await.map_err(|e| e.to_string())?;
+
+            let result: Vec<Value> = versions.iter().map(|v| {
+                json!({
+                    "version_number": v.version_number,
+                    "content_snapshot": v.content_snapshot,
+                    "summary_snapshot": v.summary_snapshot,
+                    "changed_by_provider": v.changed_by_provider,
+                    "changed_by_model": v.changed_by_model,
+                    "changed_by_api_key": v.changed_by_api_key,
+                    "changed_by_user": v.changed_by_user,
+                    "action": v.action,
+                    "created_at": v.created_at,
+                })
+            }).collect();
+
+            Ok(json!({
+                "content_type": content_type,
+                "content_id": content_id,
+                "versions": result,
+                "count": result.len(),
+            }))
+        }
+
+        "delete_knowledge" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required".to_string());
+            }
+
+            let knowledge_id_str = arguments.get("knowledge_id").and_then(|v| v.as_str())
+                .ok_or("Missing 'knowledge_id' argument")?;
+            let knowledge_id: Uuid = knowledge_id_str.parse().map_err(|_| "Invalid knowledge_id UUID")?;
+            let confirm = arguments.get("confirm").and_then(|v| v.as_bool()).unwrap_or(false);
+            let force_purge = arguments.get("force_purge").and_then(|v| v.as_bool()).unwrap_or(false);
+
+            if !confirm {
+                // First step: show the user what will be deleted
+                let entry = db::knowledge::get_knowledge_by_id(&state.pool, knowledge_id, user_id)
+                    .await.map_err(|e| e.to_string())?
+                    .ok_or("Knowledge entry not found")?;
+
+                return Ok(json!({
+                    "requires_confirmation": true,
+                    "message": "Show this content to the user and ask for confirmation to delete.",
+                    "entry": {
+                        "id": entry.id,
+                        "content": entry.content,
+                        "summary": entry.summary,
+                        "category": entry.category,
+                        "tags": entry.tags,
+                        "source_project": entry.source_project,
+                        "created_at": entry.created_at,
+                    },
+                    "next_step": "If the user confirms deletion, call this tool again with confirm=true. Set force_purge=true ONLY if the user explicitly asks to also delete version history (requires second confirmation)."
+                }));
+            }
+
+            // Record the deletion in version history before soft-deleting
+            let entry = db::knowledge::get_knowledge_by_id(&state.pool, knowledge_id, user_id)
+                .await.map_err(|e| e.to_string())?
+                .ok_or("Knowledge entry not found")?;
+
+            let _ = db::versions::record_version(
+                &state.pool, user_id, "knowledge", &knowledge_id_str,
+                &entry.content, entry.summary.as_deref(),
+                agent.api_key.name.as_str().strip_prefix("Bearer ").or(Some(&agent.api_key.name)),
+                None, Some(&agent.api_key.name), false, "delete",
+            ).await;
+
+            // Soft delete
+            sqlx::query(
+                "UPDATE knowledge_entries SET deleted_at = NOW(), deleted_by_provider = $2, deleted_by_model = $3, deleted_by_api_key = $4 WHERE id = $1 AND user_id = $5",
+            )
+            .bind(knowledge_id)
+            .bind(agent.api_key.name.as_str())
+            .bind(None::<&str>)
+            .bind(Some(&agent.api_key.name))
+            .bind(user_id)
+            .execute(&state.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            // Optionally purge version history
+            let purge_msg = if force_purge {
+                let purged = db::versions::purge_versions(&state.pool, user_id, "knowledge", knowledge_id_str)
+                    .await.map_err(|e| e.to_string())?;
+                format!(" Also permanently deleted {} version records.", purged)
+            } else {
+                " Version history preserved — use force_purge=true to permanently delete history.".to_string()
+            };
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_delete_knowledge", Some("knowledge"), true, None, None,
+                Some(&json!({"knowledge_id": knowledge_id_str, "force_purge": force_purge})),
+            ).await;
+
+            Ok(json!({
+                "status": "deleted",
+                "knowledge_id": knowledge_id_str,
+                "force_purge": force_purge,
+                "message": format!("Knowledge entry soft-deleted.{}", purge_msg)
+            }))
+        }
+
+        "update_knowledge" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required".to_string());
+            }
+
+            let knowledge_id_str = arguments.get("knowledge_id").and_then(|v| v.as_str())
+                .ok_or("Missing 'knowledge_id' argument")?;
+            let knowledge_id: Uuid = knowledge_id_str.parse().map_err(|_| "Invalid knowledge_id UUID")?;
+
+            // Get current entry
+            let current = db::knowledge::get_knowledge_by_id(&state.pool, knowledge_id, user_id)
+                .await.map_err(|e| e.to_string())?
+                .ok_or("Knowledge entry not found")?;
+
+            // Check if soft-deleted
+            // (get_knowledge already filters deleted entries, so if we found it, it's not deleted)
+
+            // Record version before update
+            let _ = db::versions::record_version(
+                &state.pool, user_id, "knowledge", knowledge_id_str,
+                &current.content, current.summary.as_deref(),
+                Some(&agent.api_key.name), None, Some(&agent.api_key.name), false, "update",
+            ).await;
+
+            // Build update
+            let new_content = arguments.get("content").and_then(|v| v.as_str()).unwrap_or(&current.content);
+            let new_summary = arguments.get("summary").and_then(|v| v.as_str()).or(current.summary.as_deref());
+            let new_category = arguments.get("category").and_then(|v| v.as_str()).unwrap_or(&current.category);
+            let new_subcategory = arguments.get("subcategory").and_then(|v| v.as_str()).or(current.subcategory.as_deref());
+            let new_tags: Vec<String> = arguments.get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|t| t.as_str().map(String::from)).collect())
+                .or_else(|| current.tags.clone()).unwrap_or_default();
+            let new_project = arguments.get("source_project").and_then(|v| v.as_str()).or(current.source_project.as_deref());
+
+            // Update in DB
+            sqlx::query(
+                r#"
+                UPDATE knowledge_entries SET
+                    content = $2, summary = $3, category = $4, subcategory = $5,
+                    tags = $6, source_project = $7, updated_at = NOW()
+                WHERE id = $1 AND user_id = $8
+                "#,
+            )
+            .bind(knowledge_id)
+            .bind(new_content)
+            .bind(new_summary)
+            .bind(new_category)
+            .bind(new_subcategory)
+            .bind(&new_tags)
+            .bind(new_project)
+            .bind(user_id)
+            .execute(&state.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            // Re-embed if content changed
+            if arguments.get("content").is_some() {
+                if db::system::is_auto_embedding_enabled(&state.pool).await {
+                    if let Some((emb_provider, emb_key)) = get_embedding_key(state, user_id).await {
+                        let embed_text = if let Some(s) = new_summary {
+                            format!("{}: {}", s, new_content)
+                        } else {
+                            new_content.to_string()
+                        };
+                        if let Ok(resp) = provider::get_embedding(&emb_provider, &emb_key, &embed_text).await {
+                            let _ = db::embeddings::update_knowledge_embedding(
+                                &state.pool, knowledge_id, &resp.embedding,
+                            ).await;
+                        }
+                    }
+                }
+            }
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_update_knowledge", Some("knowledge"), true, None, None,
+                Some(&json!({"knowledge_id": knowledge_id_str})),
+            ).await;
+
+            Ok(json!({
+                "status": "updated",
+                "knowledge_id": knowledge_id_str,
+                "message": "Knowledge entry updated. Previous version saved in version history."
             }))
         }
 

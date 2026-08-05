@@ -16,6 +16,10 @@ pub struct KnowledgeEntry {
     pub raw_input: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub deleted_by_provider: Option<String>,
+    pub deleted_by_model: Option<String>,
+    pub deleted_by_api_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -96,7 +96,7 @@ pub async fn get_knowledge_by_id(
     user_id: Uuid,
 ) -> Result<Option<KnowledgeEntry>, sqlx::Error> {
     sqlx::query_as::<_, KnowledgeEntry>(
-        "SELECT * FROM knowledge_entries WHERE id = $1 AND user_id = $2",
+        "SELECT * FROM knowledge_entries WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
     )
     .bind(id)
     .bind(user_id)
@@ -109,7 +109,7 @@ pub async fn delete_knowledge(
     id: Uuid,
     user_id: Uuid,
 ) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query("DELETE FROM knowledge_entries WHERE id = $1 AND user_id = $2")
+    let result = sqlx::query("UPDATE knowledge_entries SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL")
         .bind(id)
         .bind(user_id)
         .execute(pool)
@@ -125,7 +125,7 @@ pub async fn list_categories(
         r#"
         SELECT category, COUNT(*) as count
         FROM knowledge_entries
-        WHERE user_id = $1
+        WHERE user_id = $1 AND deleted_at IS NULL
         GROUP BY category
         ORDER BY count DESC
         "#,
