@@ -9,6 +9,7 @@ pub mod conversations;
 pub mod llm_usage;
 pub mod knowledge;
 pub mod embeddings;
+pub mod debates;
 pub mod system;
 
 pub use pool::*;

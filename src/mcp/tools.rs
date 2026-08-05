@@ -10,7 +10,7 @@ pub fn list_tools() -> Value {
                     "Layer 0: language, timezone, communication preferences (always accessible). ",
                     "Layer 1: active projects, goals, pinned memories (requires layer1 permission). ",
                     "Layer 2: personal identity, location, interests (requires layer2 permission). ",
-                    "Layer 3: encrypted vault — API keys, tokens, secrets (requires explicit user consent via request_vault_access). ",
+                    "Layer 3: encrypted vault — API keys, tokens, secrets. Requires 'vault' permission on your API key for direct access, or use request_vault_access for consent-based access. ",
                     "Start every session by reading Layer 0, then Layer 1 if you have permission."
                 ),
                 "inputSchema": {
@@ -25,7 +25,8 @@ pub fn list_tools() -> Value {
             {
                 "name": "update_context",
                 "description": concat!(
-                    "Update user context data for a specific layer (0-2 only; Layer 3 Vault is managed via the dashboard). ",
+                    "Update user context data for a specific layer (0-3). Layers 0-2 use key-value data. ",
+                    "Layer 3 (Vault) requires 'vault' permission and uses vault_key + data (string value) fields. ",
                     "IMPORTANT — choose the correct layer:\n",
                     "- Layer 0: General preferences — language, timezone, communication style, output format, blocked topics. ",
                     "Use when the user says things like 'speak Turkish', 'I prefer bullet points', 'use UTC+3'.\n",
@@ -34,15 +35,18 @@ pub fn list_tools() -> Value {
                     "Use when the user mentions projects, sets goals, or says 'remember this'.\n",
                     "- Layer 2: Personal identity — display_name, location, interests (array), contact_preferences, relationship_notes. ",
                     "Use when the user shares personal info like their name, city, or hobbies.\n",
-                    "NEVER store API keys, passwords, or secrets in any layer — those belong in the Vault (Layer 3) via the dashboard."
+                    "- Layer 3: Vault (requires vault permission) — store secrets like API keys, tokens. ",
+                    "Provide vault_key (name) and data (secret value as string). Example: {layer: 3, vault_key: 'OPENAI_API_KEY', data: 'sk-...'}.\n",
+                    "NEVER store API keys or passwords in Layers 0-2 — use Layer 3 Vault."
                 ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "layer": { "type": "integer", "enum": [0, 1, 2], "description": "Target layer: 0 (preferences), 1 (work context), or 2 (personal)" },
-                        "data": { "type": "object", "description": "Key-value pairs to update. Only provided fields are changed; omitted fields remain unchanged." }
+                        "layer": { "type": "integer", "enum": [0, 1, 2, 3], "description": "Target layer: 0 (preferences), 1 (work context), 2 (personal), or 3 (vault)" },
+                        "data": { "type": "object", "description": "Key-value pairs to update (layers 0-2). Only provided fields are changed; omitted fields remain unchanged." },
+                        "vault_key": { "type": "string", "description": "(Layer 3 only) Vault key name, e.g. 'OPENAI_API_KEY'" }
                     },
-                    "required": ["layer", "data"]
+                    "required": ["layer"]
                 }
             },
             {
@@ -69,12 +73,13 @@ pub fn list_tools() -> Value {
                 "name": "request_vault_access",
                 "description": concat!(
                     "Submit a consent request to access the user's encrypted Vault (Layer 3). ",
-                    "This tool does NOT directly return vault data — it creates a pending request that the user must approve via the dashboard. ",
-                    "Once approved, the vault data becomes accessible. ",
-                    "Use this when a task requires credentials the user previously stored in the Vault.\n",
-                    "IMPORTANT: The Vault is managed entirely through the Cerebrun dashboard. ",
-                    "If the user wants to STORE a new secret, direct them to Dashboard → Vault. ",
-                    "If the user pastes an API key in chat, tell them to store it in the dashboard instead — never process raw secrets."
+                    "This is the CONSENT-BASED flow for API keys WITHOUT 'vault' permission. ",
+                    "If your API key HAS 'vault' permission, use get_context with layer=3 instead — no consent needed. ",
+                    "This tool creates a pending request that the user must approve via the dashboard. ",
+                    "Once approved, the vault data becomes accessible with a temporary token.\n",
+                    "IMPORTANT: To STORE new secrets in the vault, use update_context with layer=3 (requires vault permission). ",
+                    "If the user wants to store a secret and your key lacks vault permission, direct them to the dashboard.",
+                    "If the user pastes an API key in chat, store it via update_context(layer=3, vault_key=..., data=...) if you have vault permission."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -210,6 +215,85 @@ pub fn list_tools() -> Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {}
+                }
+            },
+            {
+                "name": "create_debate",
+                "description": concat!(
+                    "Create a new LLM debate in Cerebrun. ",
+                    "A debate is an async discussion where multiple LLMs share their views on a topic and work toward consensus. ",
+                    "You (the agent) provide the opening message and propose completion criteria. ",
+                    "Returns a debate_id and a public_url that you can share with the user to follow the debate without logging in. ",
+                    "The user can then ask other LLMs to join the debate using the debate_id."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "topic": { "type": "string", "description": "The topic or question to debate" },
+                        "description": { "type": "string", "description": "Optional longer description or context for the debate" },
+                        "opening_message": { "type": "string", "description": "Your opening argument or position on the topic" },
+                        "completion_criteria": { "type": "array", "items": { "type": "string" }, "description": "Proposed criteria for when the debate is considered resolved" },
+                        "provider": { "type": "string", "enum": ["openai", "gemini", "anthropic", "ollama"], "description": "Your LLM provider" },
+                        "model": { "type": "string", "description": "Your model name" }
+                    },
+                    "required": ["topic", "opening_message", "provider", "model"]
+                }
+            },
+            {
+                "name": "join_debate",
+                "description": concat!(
+                    "Join an existing debate in Cerebrun. ",
+                    "Returns the full debate history (all previous messages, participants, and current completion criteria) so you can contribute meaningfully. ",
+                    "You can agree with, rebut, or build upon previous arguments, and propose new completion criteria. ",
+                    "Provide your response as the message field. Use criteria_agreement to indicate which existing criteria you agree with, and criteria_proposal to suggest new ones."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "debate_id": { "type": "string", "description": "The debate UUID" },
+                        "message": { "type": "string", "description": "Your argument, rebuttal, or contribution to the debate" },
+                        "role": { "type": "string", "enum": ["argument", "rebuttal", "synthesis", "criteria_update"], "description": "Type of message (default: argument)" },
+                        "provider": { "type": "string", "enum": ["openai", "gemini", "anthropic", "ollama"], "description": "Your LLM provider" },
+                        "model": { "type": "string", "description": "Your model name" },
+                        "criteria_agreement": { "type": "array", "items": { "type": "string" }, "description": "Existing criteria items you agree with" },
+                        "criteria_proposal": { "type": "array", "items": { "type": "string" }, "description": "New criteria to propose for debate completion" }
+                    },
+                    "required": ["debate_id", "message", "provider", "model"]
+                }
+            },
+            {
+                "name": "get_debate",
+                "description": "Get full debate details including all messages, participants, completion criteria, and status. Use this to read the current state of a debate before contributing.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "debate_id": { "type": "string", "description": "The debate UUID" }
+                    },
+                    "required": ["debate_id"]
+                }
+            },
+            {
+                "name": "list_debates",
+                "description": "List all debates for this user. Filter by status (open, concluded, closed).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "status": { "type": "string", "enum": ["open", "concluded", "closed"], "description": "Filter by status (optional)" },
+                        "limit": { "type": "integer", "description": "Max results (default 20)", "default": 20 }
+                    }
+                }
+            },
+            {
+                "name": "conclude_debate",
+                "description": "Conclude or close a debate. If all participants have agreed on the completion criteria, the debate is automatically concluded. The user can also force-close a debate.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "debate_id": { "type": "string", "description": "The debate UUID" },
+                        "force": { "type": "boolean", "description": "Force close even if criteria not met (user intervention)" },
+                        "reason": { "type": "string", "description": "Optional reason for concluding" }
+                    },
+                    "required": ["debate_id"]
                 }
             }
         ]

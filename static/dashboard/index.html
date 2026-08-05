@@ -74,6 +74,7 @@
         .layer-tag-0 { background: #2ed5731a; color: #2ed573; }
         .layer-tag-1 { background: #7c8aff1a; color: #7c8aff; }
         .layer-tag-2 { background: #ffa5021a; color: #ffa502; }
+        .layer-tag-3 { background: #ff47571a; color: #ff4757; }
         .theme-toggle-btn { background: none; border: none; cursor: pointer; font-size: 18px; padding: 4px; color: var(--accent); display: flex; align-items: center; justify-content: center; margin-right: 12px; }
     </style>
 </head>
@@ -111,6 +112,7 @@
                 <button type="button" class="tab" onclick="showTab('howto', this)">How to Use</button>
                 <button type="button" class="tab" id="tab-btn-admin" style="display:none;" onclick="showTab('admin', this)">Admin</button>
                 <button type="button" class="tab" onclick="showTab('settings', this)">Settings</button>
+                <a href="#" class="tab" onclick="showDebatesModal()">Debates</a>
                 <a href="/chat" class="tab" style="text-decoration:none; background:#2ed573; color:#0f1117; font-weight:600;">LLM Gateway</a>
             </div>
 
@@ -312,6 +314,7 @@ curl -X POST \
                             <label><input type="checkbox" id="perm-layer0" checked disabled /> Layer 0 (Public)</label>
                             <label><input type="checkbox" id="perm-layer1" /> Layer 1 (Context)</label>
                             <label><input type="checkbox" id="perm-layer2" /> Layer 2 (Personal)</label>
+                            <label><input type="checkbox" id="perm-vault" /> Vault (Layer 3)</label>
                         </div>
                     </div>
                     <button type="button" class="btn btn-primary" onclick="createKey()">Create API Key</button>
@@ -461,6 +464,15 @@ curl -X POST \
                     <p style="font-size: 13px; color: #8b8fa3; margin-bottom: 12px;">Once you delete your account, there is no going back. Please be certain.</p>
                     <button type="button" class="btn btn-danger" onclick="deleteAccount()">Delete My Account</button>
                 </div>
+            <div id="tab-debates" class="hidden">
+                <div class="card">
+                    <h3>LLM Debates</h3>
+                    <p style="font-size: 13px; color: #8b8fa3; margin-bottom: 16px;">
+                        Async discussions where multiple LLMs share views on a topic and work toward consensus.
+                        Each debate has a public link for spectator viewing.
+                    </p>
+                    <div id="debates-list"><p style="color:#6b6f82; font-size:13px;">Loading...</p></div>
+                </div>
             </div>
         </div>
     </div>
@@ -469,7 +481,7 @@ curl -X POST \
         let currentUser = null;
 
         function initTheme() {
-            const theme = localStorage.getItem('theme') || 'dark';
+            const theme = localStorage.getItem('theme') || 'light';
             if (theme === 'light') {
                 document.body.classList.add('light-theme');
             }
@@ -550,6 +562,7 @@ curl -X POST \
                         <span class="layer-tag layer-tag-0">L0</span>
                         ${(k.scopes || []).includes('layer1') ? '<span class="layer-tag layer-tag-1">L1</span>' : ''}
                         ${(k.scopes || []).includes('layer2') ? '<span class="layer-tag layer-tag-2">L2</span>' : ''}
+                        ${(k.scopes || []).includes('vault') ? '<span class="layer-tag layer-tag-3">Vault</span>' : ''}
                     </td>
                     <td class="status-active">Active</td>
                     <td>${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never'}</td>
@@ -569,6 +582,7 @@ curl -X POST \
             var scopes = ['layer0'];
             if (document.getElementById('perm-layer1').checked) scopes.push('layer1');
             if (document.getElementById('perm-layer2').checked) scopes.push('layer2');
+            if (document.getElementById('perm-vault').checked) scopes.push('vault');
             
             try {
                 var res = await fetch('/api/keys', {
@@ -902,6 +916,38 @@ curl -X POST \
         function changePage(page) {
             knowledgeOffset = (page - 1) * knowledgeLimit;
             fetchKnowledge();
+        }
+
+        async function showDebatesModal() {
+            var tabIds = ['keys', 'context', 'consent', 'audit', 'knowledge', 'howto', 'admin', 'settings', 'debates'];
+            document.querySelectorAll('.tabs .tab').forEach(function(t) { t.classList.remove('active'); });
+            tabIds.forEach(function(id) {
+                var el = document.getElementById('tab-' + id);
+                if (el) el.classList.add('hidden');
+            });
+            var targetTab = document.getElementById('tab-debates');
+            if (targetTab) targetTab.classList.remove('hidden');
+            event && event.target && event.target.classList.add('active');
+            loadDebates();
+        }
+
+        async function loadDebates() {
+            try {
+                var res = await fetch('/api/debates/list', { credentials: 'same-origin' });
+                if (!res.ok) { document.getElementById('debates-list').innerHTML = '<p style="color:#6b6f82;font-size:13px;">Login required.</p>'; return; }
+                var data = await res.json();
+                if (!data.debates || data.debates.length === 0) {
+                    document.getElementById('debates-list').innerHTML = '<p style="color:#6b6f82;font-size:13px;">No debates yet. Ask an LLM to create one via MCP.</p>';
+                    return;
+                }
+                var html = data.debates.map(function(d) {
+                    var statusClass = d.status === 'open' ? 'status-active' : 'status-revoked';
+                    return '<div class="card" style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;align-items:center;"><div><strong>' + (d.topic || 'Untitled') + '</strong> <span class="' + statusClass + '" style="font-size:11px;">' + d.status + '</span></div><div><a href="' + d.public_url + '" target="_blank" class="btn btn-secondary btn-sm">View</a></div></div><div style="font-size:12px;color:#8b8fa3;margin-top:4px;">' + (d.consensus_reached ? 'Consensus reached' : 'In progress') + ' - ' + new Date(d.created_at).toLocaleDateString() + '</div></div>';
+                }).join('');
+                document.getElementById('debates-list').innerHTML = html;
+            } catch(e) {
+                document.getElementById('debates-list').innerHTML = '<p style="color:#6b6f82;font-size:13px;">Error loading debates.</p>';
+            }
         }
 
         window.onload = init;

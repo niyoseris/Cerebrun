@@ -5,3 +5,4 @@ pub mod audit;
 pub mod llm;
 pub mod knowledge;
 pub mod admin;
+pub mod debates;

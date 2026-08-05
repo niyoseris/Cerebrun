@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthenticatedAgent;
 use crate::crypto::vault as vault_crypto;
+use crate::crypto::hash::sha256_hash;
 use crate::db;
 use crate::error::AppError;
 use crate::llm::provider;
@@ -53,7 +54,7 @@ pub async fn handle_mcp(
                 },
                 "serverInfo": {
                     "name": "cerebrun-mcp",
-                    "version": "0.4.0"
+                    "version": "0.6.0"
                 },
                 "instructions": concat!(
                     "You are connected to Cerebrun, the user's Digital Self MCP server. ",
@@ -267,7 +268,47 @@ async fn execute_tool(
                         "relationship_notes": data.relationship_notes,
                     }))
                 }
-                3 => Err("Vault access requires explicit consent flow. Use request_vault_access tool first.".to_string()),
+                3 => {
+                    // Permission-based direct vault access (no consent flow needed)
+                    if !agent.has_permission("vault") {
+                        return Err("No permission for Layer 3 (Vault). Add 'vault' to your API key permissions, or use request_vault_access for consent-based access.".to_string());
+                    }
+                    let vault_data = db::vault::get_vault(&state.pool, user_id)
+                        .await.map_err(|e| e.to_string())?
+                        .ok_or("No vault data found. Store secrets via the dashboard or update_context with layer 3.")?;
+                    
+                    let vault_key = vault_crypto::derive_vault_key(&state.config.session_secret);
+                    let decrypted = vault_crypto::decrypt_vault_data(&vault_data.encrypted_data, &vault_key)
+                        .map_err(|e| format!("Vault decryption failed: {}", e))?;
+                    let all_data: serde_json::Value = serde_json::from_slice(&decrypted)
+                        .map_err(|e| format!("Invalid vault data: {}", e))?;
+                    
+                    // Support optional fields filter
+                    let fields: Option<Vec<String>> = arguments.get("fields")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|t| t.as_str().map(String::from)).collect());
+                    
+                    let result = if let Some(ref field_list) = fields {
+                        let mut filtered = serde_json::Map::new();
+                        if let Some(obj) = all_data.as_object() {
+                            for field in field_list {
+                                if let Some(value) = obj.get(field) {
+                                    filtered.insert(field.clone(), value.clone());
+                                }
+                            }
+                        }
+                        serde_json::Value::Object(filtered)
+                    } else {
+                        all_data
+                    };
+                    
+                    let _ = db::audit::log_access(
+                        &state.pool, user_id, Some(agent.api_key.id),
+                        "mcp_read_vault", Some("3"), true, None, None, None,
+                    ).await;
+                    
+                    Ok(result)
+                }
                 _ => Err(format!("Invalid layer: {}", layer)),
             }
         }
@@ -325,6 +366,49 @@ async fn execute_tool(
                     let _ = db::layers::update_layer2(&state.pool, user_id, &update).await.map_err(|e| e.to_string())?;
                     let _ = db::audit::log_access(&state.pool, user_id, Some(agent.api_key.id), "mcp_update_layer2", Some("2"), true, None, None, None).await;
                     Ok(json!({"status": "updated"}))
+                }
+                3 => {
+                    // Permission-based direct vault write (no consent flow needed)
+                    if !agent.has_permission("vault") {
+                        return Err("No permission for Layer 3 (Vault). Add 'vault' to your API key permissions.".to_string());
+                    }
+                    
+                    let vault_key_name = arguments.get("vault_key")
+                        .and_then(|v| v.as_str())
+                        .ok_or("Missing 'vault_key' argument for vault write. Provide the key name (e.g., 'OPENAI_API_KEY').")?;
+                    let vault_value = arguments.get("data")
+                        .and_then(|v| v.as_str())
+                        .ok_or("Missing 'data' argument for vault write. Provide the secret value as a string.")?;
+                    
+                    // Read existing vault or create empty
+                    let mut current_data: serde_json::Value = if let Some(vault) = db::vault::get_vault(&state.pool, user_id).await.map_err(|e| e.to_string())? {
+                        let key = vault_crypto::derive_vault_key(&state.config.session_secret);
+                        let decrypted = vault_crypto::decrypt_vault_data(&vault.encrypted_data, &key)
+                            .map_err(|e| format!("Vault decryption failed: {}", e))?;
+                        serde_json::from_slice(&decrypted).unwrap_or_else(|_| json!({}))
+                    } else {
+                        json!({})
+                    };
+                    
+                    // Update the key
+                    if let Some(obj) = current_data.as_object_mut() {
+                        obj.insert(vault_key_name.to_string(), json!(vault_value));
+                    }
+                    
+                    // Encrypt and store
+                    let key = vault_crypto::derive_vault_key(&state.config.session_secret);
+                    let encrypted = vault_crypto::encrypt_vault_data(&serde_json::to_vec(&current_data).map_err(|e| e.to_string())?, &key)
+                        .map_err(|e| format!("Vault encryption failed: {}", e))?;
+                    let key_hash = sha256_hash(&state.config.session_secret);
+                    db::vault::upsert_vault(&state.pool, user_id, &key_hash, &encrypted).await.map_err(|e| e.to_string())?;
+                    
+                    let _ = db::audit::log_access(
+                        &state.pool, user_id, Some(agent.api_key.id),
+                        "mcp_update_vault", Some("3"), true, None, None,
+                        Some(&json!({"vault_key": vault_key_name})),
+                    ).await;
+                    
+                    Ok(json!({"status": "updated", "vault_key": vault_key_name}))
                 }
                 _ => Err(format!("Cannot update layer {}", layer)),
             }
@@ -854,6 +938,374 @@ async fn execute_tool(
             Ok(json!({
                 "categories": categories,
                 "total_entries": total,
+            }))
+        }
+
+        "create_debate" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for debates".to_string());
+            }
+
+            let topic = arguments.get("topic").and_then(|v| v.as_str())
+                .ok_or("Missing 'topic' argument")?;
+            let opening_message = arguments.get("opening_message").and_then(|v| v.as_str())
+                .ok_or("Missing 'opening_message' argument")?;
+            let provider = arguments.get("provider").and_then(|v| v.as_str())
+                .ok_or("Missing 'provider' argument")?;
+            let model = arguments.get("model").and_then(|v| v.as_str())
+                .ok_or("Missing 'model' argument")?;
+            let description = arguments.get("description").and_then(|v| v.as_str());
+            let criteria: Vec<String> = arguments.get("completion_criteria")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|t| t.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+
+            let debate = db::debates::create_debate(
+                &state.pool, user_id, agent.api_key.id, topic, description, Some(&criteria),
+            ).await.map_err(|e| e.to_string())?;
+
+            // Add opening message
+            let _ = db::debates::add_message(
+                &state.pool, debate.id, None, provider, model, 1, "opening", opening_message, None,
+            ).await.map_err(|e| e.to_string())?;
+
+            // Add participant
+            let criteria_agreed = serde_json::to_value(&criteria).unwrap_or(json!([]));
+            let _ = db::debates::add_participant(
+                &state.pool, debate.id, provider, model,
+                Some(&agent.api_key.name), Some(&criteria_agreed),
+            ).await.map_err(|e| e.to_string())?;
+
+            let public_url = format!("https://cereb.run/debate/{}", debate.public_id);
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_create_debate", Some("debate"), true, None, None,
+                Some(&json!({"debate_id": debate.id, "topic": topic})),
+            ).await;
+
+            Ok(json!({
+                "debate_id": debate.id,
+                "public_id": debate.public_id,
+                "public_url": public_url,
+                "status": debate.status,
+                "topic": debate.topic,
+                "completion_criteria": debate.completion_criteria,
+                "message": "Debate created. Share the public_url with the user so they can follow along. Ask other LLMs to join using the debate_id."
+            }))
+        }
+
+        "join_debate" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for debates".to_string());
+            }
+
+            let debate_id_str = arguments.get("debate_id").and_then(|v| v.as_str())
+                .ok_or("Missing 'debate_id' argument")?;
+            let debate_id: Uuid = debate_id_str.parse().map_err(|_| "Invalid debate_id UUID")?;
+            let message = arguments.get("message").and_then(|v| v.as_str())
+                .ok_or("Missing 'message' argument")?;
+            let provider = arguments.get("provider").and_then(|v| v.as_str())
+                .ok_or("Missing 'provider' argument")?;
+            let model = arguments.get("model").and_then(|v| v.as_str())
+                .ok_or("Missing 'model' argument")?;
+            let role = arguments.get("role").and_then(|v| v.as_str()).unwrap_or("argument");
+            let criteria_agreement: Vec<String> = arguments.get("criteria_agreement")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|t| t.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            let criteria_proposal: Vec<String> = arguments.get("criteria_proposal")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|t| t.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+
+            let debate = db::debates::get_debate(&state.pool, debate_id)
+                .await.map_err(|e| e.to_string())?
+                .ok_or("Debate not found")?;
+
+            if debate.status.as_deref() != Some("open") {
+                return Err(format!("Debate is not open (status: {})", debate.status.unwrap_or_default()));
+            }
+
+            // Get current round
+            let current_round = db::debates::get_current_round(&state.pool, debate_id)
+                .await.map_err(|e| e.to_string())?;
+
+            // Add or update participant
+            let agreed_json = serde_json::to_value(&criteria_agreement).unwrap_or(json!([]));
+            let participant = db::debates::add_participant(
+                &state.pool, debate_id, provider, model,
+                Some(&agent.api_key.name), Some(&agreed_json),
+            ).await.map_err(|e| e.to_string())?;
+
+            // Add message
+            let criteria_proposal_json = if criteria_proposal.is_empty() {
+                None
+            } else {
+                Some(serde_json::to_value(&criteria_proposal).unwrap_or(json!([])))
+            };
+
+            let _ = db::debates::add_message(
+                &state.pool, debate_id, Some(participant.id),
+                provider, model, current_round + 1, role, message,
+                criteria_proposal_json.as_ref(),
+            ).await.map_err(|e| e.to_string())?;
+
+            // Merge new criteria into debate
+            if !criteria_proposal.is_empty() {
+                let mut existing: Vec<String> = debate.completion_criteria
+                    .and_then(|v| serde_json::from_value(v).ok())
+                    .unwrap_or_default();
+                for c in &criteria_proposal {
+                    if !existing.contains(c) {
+                        existing.push(c.clone());
+                    }
+                }
+                let merged = serde_json::to_value(&existing).unwrap_or(json!([]));
+                let _ = db::debates::update_debate_criteria(&state.pool, debate_id, &merged)
+                    .await.map_err(|e| e.to_string())?;
+            }
+
+            let _ = db::debates::update_debate_timestamp(&state.pool, debate_id)
+                .await.map_err(|e| e.to_string())?;
+
+            // Get full updated debate
+            let participants = db::debates::list_participants(&state.pool, debate_id)
+                .await.map_err(|e| e.to_string())?;
+            let messages = db::debates::list_messages(&state.pool, debate_id)
+                .await.map_err(|e| e.to_string())?;
+            let updated_debate = db::debates::get_debate(&state.pool, debate_id)
+                .await.map_err(|e| e.to_string())?
+                .ok_or("Debate disappeared")?;
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_join_debate", Some("debate"), true, None, None,
+                Some(&json!({"debate_id": debate_id, "round": current_round + 1})),
+            ).await;
+
+            let msg_list: Vec<Value> = messages.iter().map(|m| {
+                json!({
+                    "id": m.id,
+                    "provider": m.provider,
+                    "model": m.model,
+                    "round": m.round,
+                    "role": m.role,
+                    "content": m.content,
+                    "criteria_proposal": m.criteria_proposal,
+                    "created_at": m.created_at,
+                })
+            }).collect();
+
+            let part_list: Vec<Value> = participants.iter().map(|p| {
+                json!({
+                    "provider": p.provider,
+                    "model": p.model,
+                    "criteria_agreed": p.criteria_agreed,
+                    "joined_at": p.joined_at,
+                })
+            }).collect();
+
+            Ok(json!({
+                "debate": {
+                    "id": updated_debate.id,
+                    "public_id": updated_debate.public_id,
+                    "public_url": format!("https://cereb.run/debate/{}", updated_debate.public_id),
+                    "topic": updated_debate.topic,
+                    "status": updated_debate.status,
+                    "completion_criteria": updated_debate.completion_criteria,
+                    "consensus_reached": updated_debate.consensus_reached,
+                },
+                "participants": part_list,
+                "messages": msg_list,
+                "your_round": current_round + 1,
+                "message": "You have joined the debate. Read all messages to understand the discussion. Check if consensus has been reached on the completion criteria."
+            }))
+        }
+
+        "get_debate" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for debates".to_string());
+            }
+
+            let debate_id_str = arguments.get("debate_id").and_then(|v| v.as_str())
+                .ok_or("Missing 'debate_id' argument")?;
+            let debate_id: Uuid = debate_id_str.parse().map_err(|_| "Invalid debate_id UUID")?;
+
+            let debate = db::debates::get_debate(&state.pool, debate_id)
+                .await.map_err(|e| e.to_string())?
+                .ok_or("Debate not found")?;
+
+            let participants = db::debates::list_participants(&state.pool, debate_id)
+                .await.map_err(|e| e.to_string())?;
+            let messages = db::debates::list_messages(&state.pool, debate_id)
+                .await.map_err(|e| e.to_string())?;
+
+            let msg_list: Vec<Value> = messages.iter().map(|m| {
+                json!({
+                    "id": m.id,
+                    "provider": m.provider,
+                    "model": m.model,
+                    "round": m.round,
+                    "role": m.role,
+                    "content": m.content,
+                    "criteria_proposal": m.criteria_proposal,
+                    "created_at": m.created_at,
+                })
+            }).collect();
+
+            let part_list: Vec<Value> = participants.iter().map(|p| {
+                json!({
+                    "provider": p.provider,
+                    "model": p.model,
+                    "criteria_agreed": p.criteria_agreed,
+                    "joined_at": p.joined_at,
+                })
+            }).collect();
+
+            // Check if all participants agree on all criteria
+            let all_criteria: Vec<String> = debate.completion_criteria.clone()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default();
+
+            let all_agreed = if !all_criteria.is_empty() && !participants.is_empty() {
+                participants.iter().all(|p| {
+                    let agreed: Vec<String> = p.criteria_agreed.clone()
+                        .and_then(|v| serde_json::from_value(v).ok())
+                        .unwrap_or_default();
+                    all_criteria.iter().all(|c| agreed.contains(c))
+                })
+            } else {
+                false
+            };
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_get_debate", Some("debate"), true, None, None, None,
+            ).await;
+
+            Ok(json!({
+                "debate": {
+                    "id": debate.id,
+                    "public_id": debate.public_id,
+                    "public_url": format!("https://cereb.run/debate/{}", debate.public_id),
+                    "topic": debate.topic,
+                    "description": debate.description,
+                    "status": debate.status,
+                    "completion_criteria": debate.completion_criteria,
+                    "consensus_reached": debate.consensus_reached,
+                    "created_at": debate.created_at,
+                    "updated_at": debate.updated_at,
+                    "concluded_at": debate.concluded_at,
+                },
+                "participants": part_list,
+                "messages": msg_list,
+                "message_count": msg_list.len(),
+                "all_criteria_met": all_agreed,
+            }))
+        }
+
+        "list_debates" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for debates".to_string());
+            }
+
+            let status_filter = arguments.get("status").and_then(|v| v.as_str());
+            let limit = arguments.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+
+            let debates = db::debates::list_debates(
+                &state.pool, user_id, status_filter, limit,
+            ).await.map_err(|e| e.to_string())?;
+
+            let result: Vec<Value> = debates.iter().map(|d| {
+                json!({
+                    "id": d.id,
+                    "public_id": d.public_id,
+                    "public_url": format!("https://cereb.run/debate/{}", d.public_id),
+                    "topic": d.topic,
+                    "status": d.status,
+                    "completion_criteria": d.completion_criteria,
+                    "consensus_reached": d.consensus_reached,
+                    "created_at": d.created_at,
+                    "updated_at": d.updated_at,
+                    "concluded_at": d.concluded_at,
+                })
+            }).collect();
+
+            Ok(json!({ "debates": result, "count": result.len() }))
+        }
+
+        "conclude_debate" => {
+            if !agent.has_permission("layer1") {
+                return Err("No permission: layer1 access required for debates".to_string());
+            }
+
+            let debate_id_str = arguments.get("debate_id").and_then(|v| v.as_str())
+                .ok_or("Missing 'debate_id' argument")?;
+            let debate_id: Uuid = debate_id_str.parse().map_err(|_| "Invalid debate_id UUID")?;
+            let force = arguments.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+            let reason = arguments.get("reason").and_then(|v| v.as_str());
+
+            let debate = db::debates::get_debate(&state.pool, debate_id)
+                .await.map_err(|e| e.to_string())?
+                .ok_or("Debate not found")?;
+
+            if debate.status.as_deref() != Some("open") {
+                return Err(format!("Debate is already {} ", debate.status.unwrap_or_default()));
+            }
+
+            if force {
+                db::debates::close_debate(&state.pool, debate_id)
+                    .await.map_err(|e| e.to_string())?;
+            } else {
+                // Check if all participants agree on all criteria
+                let participants = db::debates::list_participants(&state.pool, debate_id)
+                    .await.map_err(|e| e.to_string())?;
+
+                let all_criteria: Vec<String> = debate.completion_criteria.clone()
+                    .and_then(|v| serde_json::from_value(v).ok())
+                    .unwrap_or_default();
+
+                if all_criteria.is_empty() {
+                    return Err("Cannot conclude: no completion criteria have been set. Use join_debate to propose criteria first.".to_string());
+                }
+
+                let all_agreed = !participants.is_empty() && participants.iter().all(|p| {
+                    let agreed: Vec<String> = p.criteria_agreed.clone()
+                        .and_then(|v| serde_json::from_value(v).ok())
+                        .unwrap_or_default();
+                    all_criteria.iter().all(|c| agreed.contains(c))
+                });
+
+                if !all_agreed {
+                    let not_agreed: Vec<String> = participants.iter()
+                        .filter(|p| {
+                            let agreed: Vec<String> = p.criteria_agreed.clone()
+                                .and_then(|v| serde_json::from_value(v).ok())
+                                .unwrap_or_default();
+                            !all_criteria.iter().all(|c| agreed.contains(c))
+                        })
+                        .map(|p| format!("{}/{}", p.provider, p.model))
+                        .collect();
+                    return Err(format!("Not all participants agree on completion criteria. Missing agreement from: {}", not_agreed.join(", ")));
+                }
+
+                db::debates::conclude_debate(&state.pool, debate_id, true)
+                    .await.map_err(|e| e.to_string())?;
+            }
+
+            let _ = db::audit::log_access(
+                &state.pool, user_id, Some(agent.api_key.id),
+                "mcp_conclude_debate", Some("debate"), true, None, None,
+                Some(&json!({"debate_id": debate_id, "force": force, "reason": reason})),
+            ).await;
+
+            Ok(json!({
+                "debate_id": debate_id,
+                "status": if force { "closed" } else { "concluded" },
+                "consensus_reached": !force,
+                "reason": reason,
+                "message": if force { "Debate force-closed by user." } else { "Debate concluded: all participants agreed on completion criteria." }
             }))
         }
 

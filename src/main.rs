@@ -107,6 +107,9 @@ async fn main() {
         .route("/api/knowledge", post(api::knowledge::create_knowledge))
         .route("/api/knowledge/:id", get(api::knowledge::get_knowledge))
         .route("/api/knowledge/:id", delete(api::knowledge::delete_knowledge))
+        .route("/debate/:public_id", get(api::debates::serve_debate_page))
+        .route("/api/debates/:public_id", get(api::debates::get_public_debate))
+        .route("/api/debates/list", get(api::debates::list_user_debates))
         .route("/health", get(health_check))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -126,7 +129,7 @@ async fn health_check() -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({
         "status": "healthy",
         "service": "user-context-mcp",
-        "version": "0.2.0"
+        "version": "0.6.0"
     }))
 }
 
