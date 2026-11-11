@@ -219,9 +219,12 @@ pub async fn get_embedding_key_with_pool(
     };
 
     if let Some(key_info) = llm_key {
-        let vault_key = vault_crypto::derive_vault_key(&config.session_secret);
-        if let Ok(decrypted) = vault_crypto::decrypt_vault_data(&key_info.encrypted_key, &vault_key)
-        {
+        if let Ok(decrypted) = vault_crypto::decrypt_for_user(
+            &key_info.encrypted_key,
+            &config.session_secret,
+            user_id,
+            "llm",
+        ) {
             if let Ok(api_key) = String::from_utf8(decrypted) {
                 return Some((key_info.provider, api_key));
             }
@@ -336,10 +339,13 @@ async fn execute_tool(
                         .await.map_err(|e| e.to_string())?
                         .ok_or("No vault data found. Store secrets via the dashboard or update_context with layer 3.")?;
 
-                    let vault_key = vault_crypto::derive_vault_key(&state.config.session_secret);
-                    let decrypted =
-                        vault_crypto::decrypt_vault_data(&vault_data.encrypted_data, &vault_key)
-                            .map_err(|e| format!("Vault decryption failed: {}", e))?;
+                    let decrypted = vault_crypto::decrypt_for_user(
+                        &vault_data.encrypted_data,
+                        &state.config.session_secret,
+                        user_id,
+                        "vault",
+                    )
+                    .map_err(|e| format!("Vault decryption failed: {}", e))?;
                     let all_data: serde_json::Value = serde_json::from_slice(&decrypted)
                         .map_err(|e| format!("Invalid vault data: {}", e))?;
 
@@ -526,10 +532,13 @@ async fn execute_tool(
                             .await
                             .map_err(|e| e.to_string())?
                     {
-                        let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-                        let decrypted =
-                            vault_crypto::decrypt_vault_data(&vault.encrypted_data, &key)
-                                .map_err(|e| format!("Vault decryption failed: {}", e))?;
+                        let decrypted = vault_crypto::decrypt_for_user(
+                            &vault.encrypted_data,
+                            &state.config.session_secret,
+                            user_id,
+                            "vault",
+                        )
+                        .map_err(|e| format!("Vault decryption failed: {}", e))?;
                         serde_json::from_slice(&decrypted).unwrap_or_else(|_| json!({}))
                     } else {
                         json!({})
@@ -541,13 +550,18 @@ async fn execute_tool(
                     }
 
                     // Encrypt and store
-                    let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-                    let encrypted = vault_crypto::encrypt_vault_data(
+                    let encrypted = vault_crypto::encrypt_for_user(
                         &serde_json::to_vec(&current_data).map_err(|e| e.to_string())?,
-                        &key,
+                        &state.config.session_secret,
+                        user_id,
+                        "vault",
                     )
                     .map_err(|e| format!("Vault encryption failed: {}", e))?;
-                    let key_hash = sha256_hash(&state.config.session_secret);
+                    let key_hash = sha256_hash(&hex::encode(vault_crypto::derive_user_key(
+                        &state.config.session_secret,
+                        user_id,
+                        "vault",
+                    )));
                     db::vault::upsert_vault(&state.pool, user_id, &key_hash, &encrypted)
                         .await
                         .map_err(|e| e.to_string())?;
@@ -949,9 +963,13 @@ async fn execute_tool(
                     )
                 })?;
 
-            let vault_key = vault_crypto::derive_vault_key(&state.config.session_secret);
-            let api_key = vault_crypto::decrypt_vault_data(&provider_key.encrypted_key, &vault_key)
-                .map_err(|e| format!("Key decryption failed: {}", e))?;
+            let api_key = vault_crypto::decrypt_for_user(
+                &provider_key.encrypted_key,
+                &state.config.session_secret,
+                user_id,
+                "llm",
+            )
+            .map_err(|e| format!("Key decryption failed: {}", e))?;
             let api_key_str = String::from_utf8(api_key).map_err(|e| e.to_string())?;
 
             let conv_id = if let Some(id_str) = conv_id_str {

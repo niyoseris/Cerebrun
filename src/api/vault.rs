@@ -124,9 +124,13 @@ pub async fn get_vault_context_dashboard(
         .await?
         .ok_or_else(|| AppError::NotFound("No vault data found".to_string()))?;
 
-    let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-    let decrypted = vault_crypto::decrypt_vault_data(&vault_data.encrypted_data, &key)
-        .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
+    let decrypted = vault_crypto::decrypt_for_user(
+        &vault_data.encrypted_data,
+        &state.config.session_secret,
+        session.user.id,
+        "vault",
+    )
+    .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
 
     let all_data: serde_json::Value = serde_json::from_slice(&decrypted)
         .map_err(|e| AppError::Internal(format!("Invalid vault data: {}", e)))?;
@@ -158,9 +162,13 @@ pub async fn get_vault_context(
         .await?
         .ok_or_else(|| AppError::NotFound("No vault data found".to_string()))?;
 
-    let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-    let decrypted = vault_crypto::decrypt_vault_data(&vault_data.encrypted_data, &key)
-        .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
+    let decrypted = vault_crypto::decrypt_for_user(
+        &vault_data.encrypted_data,
+        &state.config.session_secret,
+        agent.api_key.user_id,
+        "vault",
+    )
+    .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
 
     let all_data: serde_json::Value = serde_json::from_slice(&decrypted)
         .map_err(|e| AppError::Internal(format!("Invalid vault data: {}", e)))?;
@@ -205,9 +213,13 @@ pub async fn put_vault_context(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let mut current_data =
         if let Some(vault) = db::vault::get_vault(&state.pool, session.user.id).await? {
-            let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-            let decrypted = vault_crypto::decrypt_vault_data(&vault.encrypted_data, &key)
-                .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
+            let decrypted = vault_crypto::decrypt_for_user(
+                &vault.encrypted_data,
+                &state.config.session_secret,
+                session.user.id,
+                "vault",
+            )
+            .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
             serde_json::from_slice(&decrypted).unwrap_or_else(|_| json!({}))
         } else {
             json!({})
@@ -221,12 +233,19 @@ pub async fn put_vault_context(
             }
         }
 
-        let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-        let encrypted =
-            vault_crypto::encrypt_vault_data(&serde_json::to_vec(&current_data).unwrap(), &key)
-                .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
+        let encrypted = vault_crypto::encrypt_for_user(
+            &serde_json::to_vec(&current_data).unwrap(),
+            &state.config.session_secret,
+            session.user.id,
+            "vault",
+        )
+        .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
 
-        let key_hash = sha256_hash(&state.config.session_secret);
+        let key_hash = sha256_hash(&hex::encode(vault_crypto::derive_user_key(
+            &state.config.session_secret,
+            session.user.id,
+            "vault",
+        )));
         db::vault::upsert_vault(&state.pool, session.user.id, &key_hash, &encrypted).await?;
 
         let _ = db::audit::log_access(
@@ -263,20 +282,32 @@ pub async fn delete_vault_key(
         .await?
         .ok_or_else(|| AppError::NotFound("No vault data found".to_string()))?;
 
-    let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-    let decrypted = vault_crypto::decrypt_vault_data(&vault_data.encrypted_data, &key)
-        .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
+    let decrypted = vault_crypto::decrypt_for_user(
+        &vault_data.encrypted_data,
+        &state.config.session_secret,
+        session.user.id,
+        "vault",
+    )
+    .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
 
     let mut all_data: serde_json::Value = serde_json::from_slice(&decrypted)
         .map_err(|e| AppError::Internal(format!("Invalid vault data: {}", e)))?;
 
     if let Some(obj) = all_data.as_object_mut() {
         if obj.remove(&key_name).is_some() {
-            let encrypted =
-                vault_crypto::encrypt_vault_data(&serde_json::to_vec(&all_data).unwrap(), &key)
-                    .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
+            let encrypted = vault_crypto::encrypt_for_user(
+                &serde_json::to_vec(&all_data).unwrap(),
+                &state.config.session_secret,
+                session.user.id,
+                "vault",
+            )
+            .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
 
-            let key_hash = sha256_hash(&state.config.session_secret);
+            let key_hash = sha256_hash(&hex::encode(vault_crypto::derive_user_key(
+                &state.config.session_secret,
+                session.user.id,
+                "vault",
+            )));
             db::vault::upsert_vault(&state.pool, session.user.id, &key_hash, &encrypted).await?;
 
             let _ = db::audit::log_access(

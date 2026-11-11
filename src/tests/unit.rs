@@ -4,7 +4,9 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth::AuthContext;
-use crate::crypto::vault::{decrypt_vault_data, derive_vault_key, encrypt_vault_data};
+use crate::crypto::vault::{
+    decrypt_for_user, derive_legacy_key, derive_user_key, encrypt_for_user, encrypt_legacy, is_v2,
+};
 use crate::error::AppError;
 use crate::models::User;
 
@@ -22,24 +24,55 @@ fn test_user() -> User {
 }
 
 #[test]
-fn vault_encryption_roundtrips() {
-    let key = derive_vault_key("session-secret");
+fn vault_encryption_roundtrips_with_per_user_key() {
+    let user = Uuid::new_v4();
     let plaintext = br#"{"OPENAI_API_KEY":"sk-test","nested":{"token":"abc"}}"#;
 
-    let encrypted = encrypt_vault_data(plaintext, &key).expect("encryption failed");
+    let encrypted =
+        encrypt_for_user(plaintext, "session-secret", user, "vault").expect("encryption failed");
+    assert!(is_v2(&encrypted));
     assert_ne!(encrypted, plaintext);
 
-    let decrypted = decrypt_vault_data(&encrypted, &key).expect("decryption failed");
+    let decrypted =
+        decrypt_for_user(&encrypted, "session-secret", user, "vault").expect("decryption failed");
     assert_eq!(decrypted, plaintext);
 }
 
 #[test]
-fn vault_decryption_with_wrong_key_fails() {
-    let key = derive_vault_key("session-secret");
-    let wrong = derive_vault_key("different-secret");
-    let encrypted = encrypt_vault_data(b"secret", &key).unwrap();
+fn vault_decryption_with_wrong_user_or_purpose_fails() {
+    let user = Uuid::new_v4();
+    let other = Uuid::new_v4();
+    let encrypted = encrypt_for_user(b"secret", "session-secret", user, "vault").unwrap();
 
-    assert!(decrypt_vault_data(&encrypted, &wrong).is_err());
+    assert!(decrypt_for_user(&encrypted, "session-secret", other, "vault").is_err());
+    assert!(decrypt_for_user(&encrypted, "different-secret", user, "vault").is_err());
+    assert!(decrypt_for_user(&encrypted, "session-secret", user, "llm").is_err());
+}
+
+#[test]
+fn legacy_ciphertexts_remain_readable() {
+    let user = Uuid::new_v4();
+    let legacy_key = derive_legacy_key("session-secret");
+    let legacy = encrypt_legacy(b"legacy-secret", &legacy_key).unwrap();
+    assert!(!is_v2(&legacy));
+
+    let decrypted = decrypt_for_user(&legacy, "session-secret", user, "vault").unwrap();
+    assert_eq!(decrypted, b"legacy-secret");
+}
+
+#[test]
+fn keys_are_unique_per_user_and_purpose() {
+    let first = Uuid::new_v4();
+    let second = Uuid::new_v4();
+
+    assert_ne!(
+        derive_user_key("secret", first, "vault"),
+        derive_user_key("secret", second, "vault")
+    );
+    assert_ne!(
+        derive_user_key("secret", first, "vault"),
+        derive_user_key("secret", first, "llm")
+    );
 }
 
 #[test]

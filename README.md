@@ -41,6 +41,10 @@ Integration tests create and drop isolated schemas inside the test database, so 
 
 The running service reads configuration from environment variables (see `.env.example`). The `.env` file is not loaded by the binary.
 
+### Secret storage
+
+Vault entries and LLM provider keys are encrypted with AES-256-GCM. Encryption keys are derived **per user** with HKDF-SHA256 from `SESSION_SECRET` and the user id, with separate domains for the vault and provider keys. Ciphertexts carry a `CBR2` version marker, and legacy data is re-encrypted automatically at startup (idempotent, advisory-locked). Keep `SESSION_SECRET` stable: changing it makes existing ciphertexts undecryptable.
+
 ## License & Intellectual Property
 
 This project is **Open Source**. You are free to view, study, and contribute to the code.

@@ -8,6 +8,7 @@ pub mod layers;
 pub mod llm_keys;
 pub mod llm_usage;
 pub mod pool;
+pub mod secrets;
 pub mod system;
 pub mod users;
 pub mod vault;

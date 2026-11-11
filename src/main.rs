@@ -40,6 +40,11 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
+    match db::secrets::migrate_secrets_to_v2(&pool, &config.session_secret).await {
+        Ok(stats) => tracing::info!("Secret migration: {:?}", stats),
+        Err(e) => tracing::error!("Secret migration failed: {}", e),
+    }
+
     let state = AppState {
         pool,
         config: config.clone(),

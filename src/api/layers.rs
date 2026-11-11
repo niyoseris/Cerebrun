@@ -161,8 +161,12 @@ pub async fn put_layer1(
             }
 
             if !context_text.is_empty() {
-                let api_key =
-                    crate::api::llm::decrypt_provider_key(&state, &llm_key.encrypted_key).ok();
+                let api_key = crate::api::llm::decrypt_provider_key(
+                    &state,
+                    auth.user_id,
+                    &llm_key.encrypted_key,
+                )
+                .ok();
                 if let Some(key) = api_key {
                     let embed_provider = db::system::get_embedding_provider(&state.pool).await;
                     if let Ok(resp) =

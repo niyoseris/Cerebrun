@@ -29,9 +29,13 @@ pub async fn add_provider_key(
         ));
     }
 
-    let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-    let encrypted = vault_crypto::encrypt_vault_data(req.api_key.as_bytes(), &key)
-        .map_err(|e| AppError::Internal(e))?;
+    let encrypted = vault_crypto::encrypt_for_user(
+        req.api_key.as_bytes(),
+        &state.config.session_secret,
+        session.user.id,
+        "llm",
+    )
+    .map_err(AppError::Internal)?;
 
     let record = db::llm_keys::add_provider_key(
         &state.pool,
@@ -73,10 +77,14 @@ pub async fn delete_provider_key(
     Ok(Json(json!({"status": "ok"})))
 }
 
-pub fn decrypt_provider_key(state: &AppState, encrypted: &[u8]) -> Result<String, AppError> {
-    let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-    let decrypted = vault_crypto::decrypt_vault_data(encrypted, &key)
-        .map_err(|e| AppError::Internal(format!("Decryption failed: {}", e)))?;
+pub fn decrypt_provider_key(
+    state: &AppState,
+    user_id: Uuid,
+    encrypted: &[u8],
+) -> Result<String, AppError> {
+    let decrypted =
+        vault_crypto::decrypt_for_user(encrypted, &state.config.session_secret, user_id, "llm")
+            .map_err(|e| AppError::Internal(format!("Decryption failed: {}", e)))?;
     String::from_utf8(decrypted).map_err(|e| AppError::Internal(e.to_string()))
 }
 
@@ -325,7 +333,7 @@ pub async fn chat(
             AppError::BadRequest(format!("No API key configured for provider: {}", prov))
         })?;
 
-    let api_key = decrypt_provider_key(&state, &provider_key.encrypted_key)?;
+    let api_key = decrypt_provider_key(&state, session.user.id, &provider_key.encrypted_key)?;
 
     let _user_msg = db::conversations::add_message(
         &state.pool,
@@ -463,7 +471,7 @@ pub async fn compare(
                     }
                 };
 
-            let api_key = match decrypt_provider_key(&state, &provider_key.encrypted_key) {
+            let api_key = match decrypt_provider_key(&state, user_id, &provider_key.encrypted_key) {
                 Ok(key) => key,
                 Err(e) => {
                     return json!({
@@ -626,7 +634,7 @@ pub async fn stream_chat(
         .await?
         .ok_or_else(|| AppError::BadRequest(format!("No API key for: {}", prov)))?;
 
-    let api_key = decrypt_provider_key(&state, &provider_key.encrypted_key)?;
+    let api_key = decrypt_provider_key(&state, session.user.id, &provider_key.encrypted_key)?;
 
     let _user_msg = db::conversations::add_message(
         &state.pool,
