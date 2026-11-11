@@ -53,6 +53,23 @@ pub async fn export_data(
     let key_infos: Vec<crate::models::ApiKeyInfo> =
         keys.into_iter().map(crate::models::ApiKeyInfo::from).collect();
 
+    // Data portability: include the knowledge base and the full LLM
+    // conversation history, not just the three context layers. Vault secrets
+    // are intentionally excluded from the export for safety.
+    let knowledge = db::knowledge::query_knowledge(
+        &state.pool, user_id, None, None, None, None, 10_000, 0,
+    ).await?;
+
+    let conversations = db::conversations::list_conversations(&state.pool, user_id).await?;
+    let mut conversation_exports = Vec::new();
+    for conv in conversations {
+        let messages = db::conversations::get_messages(&state.pool, conv.id).await?;
+        conversation_exports.push(json!({
+            "conversation": conv,
+            "messages": messages,
+        }));
+    }
+
     Ok(Json(json!({
         "user": {
             "id": session.user.id,
@@ -63,6 +80,9 @@ pub async fn export_data(
         "layer1": layer1,
         "layer2": layer2,
         "api_keys": key_infos,
+        "knowledge": knowledge,
+        "conversations": conversation_exports,
+        "vault": null,
     })))
 }
 

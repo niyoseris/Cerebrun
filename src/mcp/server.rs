@@ -76,9 +76,11 @@ pub async fn handle_mcp(
                     "Update this when the user shares personal information (e.g., 'I live in Istanbul', 'I'm interested in distributed systems').\n",
                     "- **Layer 3 (Encrypted Vault):** API keys, tokens, passwords, and other secrets. ",
                     "NEVER store secrets in Layers 0-2 or in the Knowledge Base. ",
-                    "The Vault is managed entirely through the Cerebrun dashboard — there is no MCP tool to write secrets. ",
-                    "When a user says 'save my API key' or shares a secret, direct them to the Cerebrun dashboard → Vault section. ",
-                    "You can use `request_vault_access` to REQUEST read access to existing secrets, but the user must approve the request first.\n\n",
+                    "The Vault is the only place for secrets. ",
+                    "With an API key that has 'vault' permission, store a secret with `update_context` (layer=3, vault_key, data). ",
+                    "Without vault permission, direct the user to the Cerebrun dashboard → Vault section. ",
+                    "You can use `request_vault_access` to REQUEST read access to existing secrets; the user must approve it first. ",
+                    "After approval the user receives a short-lived vault_token; pass it to `get_vault_data` to read the approved fields.\n\n",
 
                     "## Knowledge Base\n",
                     "Use `push_knowledge` to store important information that should persist across sessions:\n",
@@ -181,9 +183,20 @@ pub async fn get_embedding_key(state: &AppState, user_id: Uuid) -> Option<(Strin
 
 pub async fn get_embedding_key_with_pool(pool: &sqlx::PgPool, config: &crate::config::AppConfig, user_id: Uuid) -> Option<(String, String)> {
     let target_provider = db::system::get_embedding_provider(pool).await;
-    let llm_key = if let Ok(Some(k)) = db::llm_keys::get_provider_key(pool, user_id, &target_provider).await {
-        Some(k)
+
+    // Only OpenAI and Ollama expose embeddings. If an administrator selected
+    // another provider, fall back to any embedding-capable key instead of
+    // returning a key that can never be used for embeddings.
+    let llm_key = if target_provider == "openai" || target_provider == "ollama" {
+        match db::llm_keys::get_provider_key(pool, user_id, &target_provider).await {
+            Ok(Some(key)) => Some(key),
+            _ => db::llm_keys::get_any_embedding_key(pool, user_id).await.ok().flatten(),
+        }
     } else {
+        tracing::warn!(
+            "embedding_provider '{}' does not support embeddings; falling back to OpenAI/Ollama",
+            target_provider
+        );
         db::llm_keys::get_any_embedding_key(pool, user_id).await.ok().flatten()
     };
 
@@ -626,7 +639,7 @@ async fn execute_tool(
                     .take(3)
                     .map(|m| json!({
                         "role": m.role,
-                        "content_preview": if m.content.len() > 200 { format!("{}...", &m.content[..200]) } else { m.content.clone() },
+                        "content_preview": if m.content.chars().count() > 200 { format!("{}...", m.content.chars().take(200).collect::<String>()) } else { m.content.clone() },
                         "created_at": m.created_at,
                     }))
                     .collect();
@@ -688,7 +701,7 @@ async fn execute_tool(
 
                 let conv = db::conversations::create_conversation(
                     &state.pool, user_id, prov, mdl,
-                    title.or(Some(&format!("MCP: {}", &message[..message.len().min(50)]))),
+                    title.or(Some(&format!("MCP: {}", message.chars().take(50).collect::<String>()))),
                     if sys_prompt.is_empty() { None } else { Some(&sys_prompt) },
                     None, None,
                 ).await.map_err(|e| e.to_string())?;
@@ -1022,6 +1035,9 @@ async fn execute_tool(
             let debate = db::debates::get_debate(&state.pool, debate_id)
                 .await.map_err(|e| e.to_string())?
                 .ok_or("Debate not found")?;
+            if debate.user_id != user_id {
+                return Err("Debate not found".to_string());
+            }
 
             if debate.status.as_deref() != Some("open") {
                 return Err(format!("Debate is not open (status: {})", debate.status.unwrap_or_default()));
@@ -1135,6 +1151,9 @@ async fn execute_tool(
             let debate = db::debates::get_debate(&state.pool, debate_id)
                 .await.map_err(|e| e.to_string())?
                 .ok_or("Debate not found")?;
+            if debate.user_id != user_id {
+                return Err("Debate not found".to_string());
+            }
 
             let participants = db::debates::list_participants(&state.pool, debate_id)
                 .await.map_err(|e| e.to_string())?;
@@ -1249,6 +1268,9 @@ async fn execute_tool(
             let debate = db::debates::get_debate(&state.pool, debate_id)
                 .await.map_err(|e| e.to_string())?
                 .ok_or("Debate not found")?;
+            if debate.user_id != user_id {
+                return Err("Debate not found".to_string());
+            }
 
             if debate.status.as_deref() != Some("open") {
                 return Err(format!("Debate is already {} ", debate.status.unwrap_or_default()));

@@ -34,11 +34,18 @@ struct GoogleUserInfo {
 use crate::AppState;
 
 fn get_redirect_uri(headers: &HeaderMap, config: &crate::config::AppConfig) -> String {
+    // Prefer the configured canonical callback URL. Deriving it from the Host
+    // header makes the OAuth redirect depend on whether the user arrived on
+    // `www.` or the apex domain, which must both be registered in Google Cloud.
+    if !config.google_redirect_uri.is_empty() {
+        return config.google_redirect_uri.clone();
+    }
+
     if let Some(host) = headers.get("host").and_then(|v| v.to_str().ok()) {
         let final_scheme = if host.contains("localhost") || host.contains("127.0.0.1") { "http" } else { "https" };
         format!("{}://{}/auth/google/callback", final_scheme, host)
     } else {
-        config.google_redirect_uri.clone()
+        "http://localhost:5000/auth/google/callback".to_string()
     }
 }
 
@@ -47,22 +54,16 @@ pub async fn google_auth(
     headers: HeaderMap,
 ) -> Result<(HeaderMap, Redirect), AppError> {
     let csrf_state = generate_random_key("state");
-    let state_hash = sha256_hash(&csrf_state);
 
     let redirect_uri = get_redirect_uri(&headers, &state.config);
     tracing::info!("Google Auth Start - Redirect URI: {}", redirect_uri);
 
-    sqlx::query(
-        "INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ((SELECT id FROM users LIMIT 0), $1, NOW() + INTERVAL '10 minutes') ON CONFLICT DO NOTHING"
-    ).bind(&format!("oauth_state:{}", state_hash))
-    .execute(&state.pool)
-    .await
-    .ok();
+    let secure = if redirect_uri.starts_with("https://") { "; Secure" } else { "" };
 
     let mut resp_headers = HeaderMap::new();
     let cookie_value = format!(
-        "oauth_state={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax",
-        csrf_state
+        "oauth_state={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax{}",
+        csrf_state, secure
     );
     resp_headers.insert(
         http::header::SET_COOKIE,
@@ -70,8 +71,8 @@ pub async fn google_auth(
     );
 
     let redirect_cookie = format!(
-        "oauth_redirect_uri={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax",
-        redirect_uri
+        "oauth_redirect_uri={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax{}",
+        redirect_uri, secure
     );
     resp_headers.append(
         http::header::SET_COOKIE,
@@ -122,7 +123,7 @@ pub async fn google_callback(
     tracing::info!("Google Callback - Redirect URI: {}", redirect_uri);
     tracing::info!("Google Callback - State: {:?}", params.state);
 
-    let token_response: GoogleTokenResponse = reqwest::Client::new()
+    let token_http = reqwest::Client::new()
         .post("https://oauth2.googleapis.com/token")
         .form(&[
             ("code", params.code.as_str()),
@@ -135,32 +136,66 @@ pub async fn google_callback(
         .await
         .map_err(|e| {
             tracing::error!("OAuth - Token request failed: {}", e);
-            AppError::OAuth(e.to_string())
-        })?
-        .json()
-        .await
-        .map_err(|e| {
-            tracing::error!("OAuth - Token JSON parsing failed: {}", e);
-            AppError::OAuth(e.to_string())
+            AppError::OAuth("Token request failed".to_string())
         })?;
+
+    let token_status = token_http.status();
+    let token_body = token_http.text().await.map_err(|e| {
+        tracing::error!("OAuth - Failed to read token response: {}", e);
+        AppError::OAuth("Token response could not be read".to_string())
+    })?;
+
+    if !token_status.is_success() {
+        tracing::error!(
+            "OAuth - Token exchange rejected ({}): {}",
+            token_status.as_u16(),
+            token_body
+        );
+        return Err(AppError::OAuth(format!(
+            "Token exchange failed with status {}",
+            token_status.as_u16()
+        )));
+    }
+
+    let token_response: GoogleTokenResponse = serde_json::from_str(&token_body).map_err(|e| {
+        tracing::error!("OAuth - Token JSON parsing failed: {} body={}", e, token_body);
+        AppError::OAuth("Token response could not be parsed".to_string())
+    })?;
 
     tracing::info!("OAuth - Token Received Successfully");
 
-    let user_info: GoogleUserInfo = reqwest::Client::new()
+    let userinfo_http = reqwest::Client::new()
         .get("https://www.googleapis.com/oauth2/v3/userinfo")
         .bearer_auth(&token_response.access_token)
         .send()
         .await
         .map_err(|e| {
             tracing::error!("OAuth - Failed to fetch userinfo: {}", e);
-            AppError::OAuth(e.to_string())
-        })?
-        .json()
-        .await
-        .map_err(|e| {
-            tracing::error!("OAuth - Failed to parse userinfo JSON: {}", e);
-            AppError::OAuth(e.to_string())
+            AppError::OAuth("User info request failed".to_string())
         })?;
+
+    let userinfo_status = userinfo_http.status();
+    let userinfo_body = userinfo_http.text().await.map_err(|e| {
+        tracing::error!("OAuth - Failed to read userinfo response: {}", e);
+        AppError::OAuth("User info response could not be read".to_string())
+    })?;
+
+    if !userinfo_status.is_success() {
+        tracing::error!(
+            "OAuth - Userinfo rejected ({}): {}",
+            userinfo_status.as_u16(),
+            userinfo_body
+        );
+        return Err(AppError::OAuth(format!(
+            "User info request failed with status {}",
+            userinfo_status.as_u16()
+        )));
+    }
+
+    let user_info: GoogleUserInfo = serde_json::from_str(&userinfo_body).map_err(|e| {
+        tracing::error!("OAuth - Failed to parse userinfo JSON: {} body={}", e, userinfo_body);
+        AppError::OAuth("User info response could not be parsed".to_string())
+    })?;
 
     tracing::info!("OAuth - User Info Fetched: {}", user_info.email);
 

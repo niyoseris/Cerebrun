@@ -208,10 +208,12 @@ pub async fn create_conversation(
 
     if inject != true || budget != 2000 {
         let _ = sqlx::query(
-            "UPDATE conversations SET inject_context = $1, context_token_budget = $2 WHERE id = $3"
+            "UPDATE conversations SET inject_context = $1, context_token_budget = $2 WHERE id = $3 AND user_id = $4"
         )
         .bind(inject)
         .bind(budget)
+        .bind(conv.id)
+        .bind(session.user.id)
         .execute(&state.pool)
         .await;
     }
@@ -346,64 +348,107 @@ pub async fn compare(
     let layer0 = db::layers::get_layer0(&state.pool, session.user.id).await?;
     let system_prompt = build_system_prompt_layer0_only(layer0.as_ref());
 
-    let mut results = Vec::new();
+    let user_id = session.user.id;
 
-    for target in &req.targets {
-        let provider_key = db::llm_keys::get_provider_key(&state.pool, session.user.id, &target.provider)
-            .await?
-            .ok_or_else(|| AppError::BadRequest(format!("No API key for: {}", target.provider)))?;
+    // Run every target concurrently; the old implementation awaited each
+    // provider sequentially, which made an A/B comparison as slow as the sum
+    // of all providers instead of the slowest one.
+    let futures = req.targets.iter().map(|target| {
+        let state = state.clone();
+        let system_prompt = system_prompt.clone();
+        let message = req.message.clone();
+        let provider_name = target.provider.clone();
+        let model = target.model.clone();
 
-        let api_key = decrypt_provider_key(&state, &provider_key.encrypted_key)?;
+        async move {
+            let provider_key = match db::llm_keys::get_provider_key(&state.pool, user_id, &provider_name).await {
+                Ok(Some(key)) => key,
+                Ok(None) => {
+                    return json!({
+                        "provider": provider_name.clone(),
+                        "model": model,
+                        "content": null,
+                        "error": format!("No API key for: {}", provider_name),
+                        "latency_ms": 0,
+                        "status": "error",
+                    })
+                }
+                Err(e) => {
+                    return json!({
+                        "provider": provider_name.clone(),
+                        "model": model,
+                        "content": null,
+                        "error": e.to_string(),
+                        "latency_ms": 0,
+                        "status": "error",
+                    })
+                }
+            };
 
-        let mut messages = Vec::new();
-        if !system_prompt.is_empty() {
-            messages.push(provider::LlmMessage {
-                role: "system".to_string(),
-                content: system_prompt.clone(),
-            });
-        }
-        messages.push(provider::LlmMessage {
-            role: "user".to_string(),
-            content: req.message.clone(),
-        });
+            let api_key = match decrypt_provider_key(&state, &provider_key.encrypted_key) {
+                Ok(key) => key,
+                Err(e) => {
+                    return json!({
+                        "provider": provider_name.clone(),
+                        "model": model,
+                        "content": null,
+                        "error": e.to_string(),
+                        "latency_ms": 0,
+                        "status": "error",
+                    })
+                }
+            };
 
-        let start = std::time::Instant::now();
-        let response = provider::call_llm(&target.provider, &target.model, &api_key, &messages).await;
-        let elapsed = start.elapsed();
-
-        match response {
-            Ok(resp) => {
-                let _ = db::llm_usage::record_usage(
-                    &state.pool, session.user.id, None, None,
-                    &target.provider, &target.model,
-                    resp.prompt_tokens, resp.completion_tokens, resp.total_tokens,
-                ).await;
-
-                results.push(json!({
-                    "provider": target.provider,
-                    "model": target.model,
-                    "content": resp.content,
-                    "usage": {
-                        "prompt_tokens": resp.prompt_tokens,
-                        "completion_tokens": resp.completion_tokens,
-                        "total_tokens": resp.total_tokens,
-                    },
-                    "latency_ms": elapsed.as_millis(),
-                    "status": "success",
-                }));
+            let mut messages = Vec::new();
+            if !system_prompt.is_empty() {
+                messages.push(provider::LlmMessage {
+                    role: "system".to_string(),
+                    content: system_prompt,
+                });
             }
-            Err(e) => {
-                results.push(json!({
-                    "provider": target.provider,
-                    "model": target.model,
+            messages.push(provider::LlmMessage {
+                role: "user".to_string(),
+                content: message,
+            });
+
+            let start = std::time::Instant::now();
+            let response = provider::call_llm(&provider_name, &model, &api_key, &messages).await;
+            let elapsed = start.elapsed();
+
+            match response {
+                Ok(resp) => {
+                    let _ = db::llm_usage::record_usage(
+                        &state.pool, user_id, None, None,
+                        &provider_name, &model,
+                        resp.prompt_tokens, resp.completion_tokens, resp.total_tokens,
+                    ).await;
+
+                    json!({
+                        "provider": provider_name,
+                        "model": model,
+                        "content": resp.content,
+                        "usage": {
+                            "prompt_tokens": resp.prompt_tokens,
+                            "completion_tokens": resp.completion_tokens,
+                            "total_tokens": resp.total_tokens,
+                        },
+                        "latency_ms": elapsed.as_millis(),
+                        "status": "success",
+                    })
+                }
+                Err(e) => json!({
+                    "provider": provider_name,
+                    "model": model,
                     "content": null,
                     "error": e,
                     "latency_ms": elapsed.as_millis(),
                     "status": "error",
-                }));
+                }),
             }
         }
-    }
+    });
+
+    let results = futures::future::join_all(futures).await;
 
     Ok(Json(json!({ "results": results })))
 }

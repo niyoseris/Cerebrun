@@ -54,8 +54,14 @@ pub async fn serve_debate_page(
         })).collect::<Vec<_>>(),
     });
 
-    let json_data = serde_json::to_string(&debate_json).unwrap_or_default();
-    let topic_escaped = debate.topic.replace('"', "\"").replace('<', "&lt;").replace('>', "&gt;");
+    let json_for_script = serde_json::to_string(&debate_json)
+        .unwrap_or_else(|_| "{}".to_string())
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026")
+        .replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029");
+    let title_escaped = html_escape(&debate.topic);
     let html = format!(r#"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -120,14 +126,11 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
   <div class="empty">Loading debate...</div>
 </div>
 <script>
-const DEBATE_DATA = {{}};
+const DEBATE_DATA = {};
 
 async function loadDebate() {{
   try {{
-    // The data is embedded server-side
-    const data = {};
-    DEBATE_DATA.data = data;
-    render(data);
+    render(DEBATE_DATA);
   }} catch(e) {{
     document.getElementById('debate-container').innerHTML = '<div class="empty">Failed to load debate.</div>';
   }}
@@ -207,9 +210,18 @@ function escapeHtml(text) {{
 loadDebate();
 </script>
 </body>
-</html>"#, json_data, topic_escaped);
+</html>"#, title_escaped, json_for_script);
 
     Ok(axum::response::Html(html))
+}
+
+fn html_escape(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 /// Public API: get debate by public_id (no auth, read-only)

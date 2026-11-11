@@ -72,6 +72,14 @@ pub async fn update_setting(
     }
     if let Some(key) = req.get("key").and_then(|v| v.as_str()) {
         if let Some(value) = req.get("value") {
+            if key == "embedding_provider" {
+                let provider = value.as_str().unwrap_or("");
+                if provider != "openai" && provider != "ollama" {
+                    return Err(AppError::BadRequest(
+                        "embedding_provider must be 'openai' or 'ollama'".to_string(),
+                    ));
+                }
+            }
             db::system::set_setting(&state.pool, key, value.clone()).await?;
         }
     }

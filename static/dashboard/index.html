@@ -480,6 +480,16 @@ curl -X POST \
     <script>
         let currentUser = null;
 
+        // Agent- and user-supplied strings must never be interpolated into
+        // innerHTML without escaping: knowledge entries and vault request
+        // reasons are written by external LLMs.
+        function escapeHtml(value) {
+            if (value === null || value === undefined) return '';
+            return String(value).replace(/[&<>"']/g, function(c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
         function initTheme() {
             const theme = localStorage.getItem('theme') || 'light';
             if (theme === 'light') {
@@ -555,20 +565,25 @@ curl -X POST \
             if (!res.ok) return;
             const keys = await res.json();
             const tbody = document.getElementById('keys-table');
-            tbody.innerHTML = keys.map(k => `
+            tbody.innerHTML = keys.map(k => {
+                const permissions = k.permissions || {};
+                const status = k.status || 'active';
+                const statusClass = status === 'revoked' ? 'status-revoked' : 'status-active';
+                return `
                 <tr>
-                    <td>${k.name}</td>
+                    <td>${escapeHtml(k.name)}</td>
                     <td>
                         <span class="layer-tag layer-tag-0">L0</span>
-                        ${(k.scopes || []).includes('layer1') ? '<span class="layer-tag layer-tag-1">L1</span>' : ''}
-                        ${(k.scopes || []).includes('layer2') ? '<span class="layer-tag layer-tag-2">L2</span>' : ''}
-                        ${(k.scopes || []).includes('vault') ? '<span class="layer-tag layer-tag-3">Vault</span>' : ''}
+                        ${permissions.layer1 ? '<span class="layer-tag layer-tag-1">L1</span>' : ''}
+                        ${permissions.layer2 ? '<span class="layer-tag layer-tag-2">L2</span>' : ''}
+                        ${permissions.vault ? '<span class="layer-tag layer-tag-3">Vault</span>' : ''}
                     </td>
-                    <td class="status-active">Active</td>
+                    <td class="${statusClass}">${escapeHtml(status)}</td>
                     <td>${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never'}</td>
                     <td><button class="btn btn-danger btn-sm" onclick="revokeKey('${k.id}')">Revoke</button></td>
                 </tr>
-            `).join('');
+            `;
+            }).join('');
         }
 
         async function createKey() {
@@ -579,16 +594,17 @@ curl -X POST \
                 return;
             }
             
-            var scopes = ['layer0'];
-            if (document.getElementById('perm-layer1').checked) scopes.push('layer1');
-            if (document.getElementById('perm-layer2').checked) scopes.push('layer2');
-            if (document.getElementById('perm-vault').checked) scopes.push('vault');
-            
+            var permissions = {
+                layer1: document.getElementById('perm-layer1').checked,
+                layer2: document.getElementById('perm-layer2').checked,
+                vault: document.getElementById('perm-vault').checked
+            };
+
             try {
                 var res = await fetch('/api/keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: name, scopes: scopes })
+                    body: JSON.stringify({ name: name, permissions: permissions })
                 });
                 
                 if (res.ok) {
@@ -610,7 +626,7 @@ curl -X POST \
 
         async function revokeKey(id) {
             if (!confirm('Are you sure you want to revoke this key?')) return;
-            const res = await fetch(`/api/keys/${id}`, { method: 'DELETE' });
+            const res = await fetch(`/api/keys/${id}/revoke`, { method: 'POST' });
             if (res.ok) loadKeys();
         }
 
@@ -640,7 +656,7 @@ curl -X POST \
             const res1 = await fetch('/api/v1/context');
             if (res1.ok) {
                 const data = await res1.json();
-                document.getElementById('l1-goals').value = (data.active_goals || []).join('\n');
+                document.getElementById('l1-goals').value = (data.current_goals || []).join('\n');
                 document.getElementById('l1-memories').value = (data.pinned_memories || []).join('\n');
             }
         }
@@ -659,13 +675,13 @@ curl -X POST \
         }
 
         async function saveLayer1() {
-            const active_goals = document.getElementById('l1-goals').value.split('\n').filter(s => s.trim());
+            const current_goals = document.getElementById('l1-goals').value.split('\n').filter(s => s.trim());
             const pinned_memories = document.getElementById('l1-memories').value.split('\n').filter(s => s.trim());
-            
+
             const res = await fetch('/api/v1/context', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ active_goals, pinned_memories })
+                body: JSON.stringify({ current_goals, pinned_memories })
             });
             if (res.ok) alert('Layer 1 saved');
         }
@@ -701,8 +717,8 @@ curl -X POST \
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 ${vaultData.keys.map(k => `
                                     <div class="layer-tag layer-tag-1" style="background: #2ed5731a; color: #2ed573; border: 1px solid #2ed57333; display: flex; align-items: center; gap: 8px;">
-                                        ${k}
-                                        <span onclick="event.stopPropagation(); deleteVaultKey('${k}')" style="cursor: pointer; font-weight: bold; font-size: 16px; line-height: 1; opacity: 0.6; padding: 0 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">&times;</span>
+                                        ${escapeHtml(k)}
+                                        <span onclick="event.stopPropagation(); deleteVaultKey(this.dataset.key)" data-key="${escapeHtml(k)}" style="cursor: pointer; font-weight: bold; font-size: 16px; line-height: 1; opacity: 0.6; padding: 0 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">&times;</span>
                                     </div>
                                 `).join('')}
                             </div>
@@ -717,10 +733,10 @@ curl -X POST \
                 container.innerHTML = requests.map(r => `
                     <div class="card consent-card" style="margin-bottom: 8px;">
                         <div class="consent-info">
-                            <strong>Reason:</strong> ${r.reason}<br/>
+                            <strong>Reason:</strong> ${escapeHtml(r.reason)}<br/>
                             <span style="color: #8b8fa3; font-size: 12px;">
-                                Requested: ${JSON.stringify(r.requested_data)} |
-                                <span class="badge badge-pending">${r.status}</span>
+                                Requested: ${escapeHtml(JSON.stringify(r.requested_data))} |
+                                <span class="badge badge-pending">${escapeHtml(r.status)}</span>
                             </span>
                         </div>
                         <div class="consent-actions">
@@ -738,7 +754,13 @@ curl -X POST \
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ request_id: id })
             });
-            if (res.ok) loadConsentRequests();
+            if (res.ok) {
+                const data = await res.json();
+                if (data.vault_token) {
+                    alert('Vault access approved. Give this temporary token to the agent that requested access:\n\n' + data.vault_token);
+                }
+                loadConsentRequests();
+            }
         }
 
         async function denyConsent(id) {
@@ -798,8 +820,8 @@ curl -X POST \
             tbody.innerHTML = (data.entries || []).map(e => `
                 <tr>
                     <td>${new Date(e.created_at).toLocaleString()}</td>
-                    <td>${e.action}</td>
-                    <td>${e.layer || '-'}</td>
+                    <td>${escapeHtml(e.action)}</td>
+                    <td>${escapeHtml(e.layer || '-')}</td>
                     <td style="color: ${e.granted ? '#2ed573' : '#ff4757'}">${e.granted ? 'Yes' : 'No'}</td>
                 </tr>
             `).join('');
@@ -863,7 +885,7 @@ curl -X POST \
             const search = document.getElementById('knowledge-search').value;
             const category = document.getElementById('knowledge-category-filter').value;
             let url = `/api/knowledge?limit=${knowledgeLimit}&offset=${knowledgeOffset}`;
-            if (search) url += `&query=${encodeURIComponent(search)}`;
+            if (search) url += `&keyword=${encodeURIComponent(search)}`;
             if (category) url += `&category=${encodeURIComponent(category)}`;
 
             const res = await fetch(url);
@@ -884,15 +906,15 @@ curl -X POST \
             list.innerHTML = entries.map(e => `
                 <div class="card" style="margin-bottom: 12px; border-left: 4px solid var(--accent);">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-                        <span class="badge badge-pending" style="background: var(--accent); color: white;">${e.category}</span>
+                        <span class="badge badge-pending" style="background: var(--accent); color: white;">${escapeHtml(e.category)}</span>
                         <span style="font-size: 11px; color: #8b8fa3;">${new Date(e.created_at).toLocaleString()}</span>
                     </div>
-                    <div style="font-size: 14px; margin-bottom: 8px;">${e.content}</div>
+                    <div style="font-size: 14px; margin-bottom: 8px;">${escapeHtml(e.content)}</div>
                     <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                        ${(e.tags || []).map(t => `<span class="layer-tag layer-tag-2" style="font-size: 10px;">#${t}</span>`).join('')}
+                        ${(e.tags || []).map(t => `<span class="layer-tag layer-tag-2" style="font-size: 10px;">#${escapeHtml(t)}</span>`).join('')}
                     </div>
                     <div style="margin-top: 8px; font-size: 11px; color: #8b8fa3; text-align: right;">
-                        Source: ${e.agent_name || 'System'} | Project: ${e.project_id || 'Global'}
+                        Source: ${escapeHtml(e.source_agent || 'System')} | Project: ${escapeHtml(e.source_project || 'Global')}
                     </div>
                 </div>
             `).join('');
@@ -942,7 +964,7 @@ curl -X POST \
                 }
                 var html = data.debates.map(function(d) {
                     var statusClass = d.status === 'open' ? 'status-active' : 'status-revoked';
-                    return '<div class="card" style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;align-items:center;"><div><strong>' + (d.topic || 'Untitled') + '</strong> <span class="' + statusClass + '" style="font-size:11px;">' + d.status + '</span></div><div><a href="' + d.public_url + '" target="_blank" class="btn btn-secondary btn-sm">View</a></div></div><div style="font-size:12px;color:#8b8fa3;margin-top:4px;">' + (d.consensus_reached ? 'Consensus reached' : 'In progress') + ' - ' + new Date(d.created_at).toLocaleDateString() + '</div></div>';
+                    return '<div class="card" style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;align-items:center;"><div><strong>' + escapeHtml(d.topic || 'Untitled') + '</strong> <span class="' + statusClass + '" style="font-size:11px;">' + escapeHtml(d.status) + '</span></div><div><a href="' + escapeHtml(d.public_url) + '" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">View</a></div></div><div style="font-size:12px;color:#8b8fa3;margin-top:4px;">' + (d.consensus_reached ? 'Consensus reached' : 'In progress') + ' - ' + new Date(d.created_at).toLocaleDateString() + '</div></div>';
                 }).join('');
                 document.getElementById('debates-list').innerHTML = html;
             } catch(e) {

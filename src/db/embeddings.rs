@@ -123,6 +123,7 @@ pub async fn search_similar_knowledge(
                1 - (embedding <=> $1::vector) as similarity
         FROM knowledge_entries
         WHERE user_id = $2
+          AND deleted_at IS NULL
           AND embedding IS NOT NULL
           AND 1 - (embedding <=> $1::vector) >= $3
         ORDER BY embedding <=> $1::vector

@@ -91,6 +91,22 @@ pub fn list_tools() -> Value {
                 }
             },
             {
+                "name": "get_vault_data",
+                "description": concat!(
+                    "Retrieve approved Vault fields using a temporary consent token. ",
+                    "Call request_vault_access first. When the user approves the request in the Cerebrun dashboard, ",
+                    "they receive a short-lived vault_token that is bound to your API key. Pass that token here. ",
+                    "The token expires; request access again if it has expired."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "vault_token": { "type": "string", "description": "Temporary token shown to the user after they approved the vault access request" }
+                    },
+                    "required": ["vault_token"]
+                }
+            },
+            {
                 "name": "list_conversations",
                 "description": "List the user's LLM Gateway conversations. Shows recent chat threads with different AI models (OpenAI, Gemini, Anthropic, Ollama). Use this to see what conversations the user has had.",
                 "inputSchema": {

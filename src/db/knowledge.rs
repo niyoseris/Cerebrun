@@ -45,7 +45,7 @@ pub async fn query_knowledge(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<KnowledgeEntry>, sqlx::Error> {
-    let mut conditions = vec!["user_id = $1".to_string()];
+    let mut conditions = vec!["user_id = $1".to_string(), "deleted_at IS NULL".to_string()];
     let mut param_idx = 2;
 
     if keyword.is_some() {
@@ -143,7 +143,7 @@ pub async fn count_knowledge(
     tag: Option<&str>,
     source_project: Option<&str>,
 ) -> Result<i64, sqlx::Error> {
-    let mut conditions = vec!["user_id = $1".to_string()];
+    let mut conditions = vec!["user_id = $1".to_string(), "deleted_at IS NULL".to_string()];
     let mut param_idx = 2;
 
     if keyword.is_some() {

@@ -2,7 +2,7 @@ use axum::extract::State;
 use axum::Json;
 use serde_json::json;
 
-use crate::auth::{AuthenticatedAgent, SessionUser};
+use crate::auth::{AuthContext, SessionUser};
 use crate::db;
 use crate::error::AppError;
 use crate::models::{Layer0Update, Layer1Update, Layer2Update};
@@ -10,14 +10,14 @@ use crate::AppState;
 
 pub async fn get_layer0(
     State(state): State<AppState>,
-    agent: AuthenticatedAgent,
+    auth: AuthContext,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let data = db::layers::get_layer0(&state.pool, agent.api_key.user_id)
+    let data = db::layers::get_layer0(&state.pool, auth.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Layer 0 data not found".to_string()))?;
 
     let _ = db::audit::log_access(
-        &state.pool, agent.api_key.user_id, Some(agent.api_key.id),
+        &state.pool, auth.user_id, auth.api_key_id,
         "read_layer0", Some("0"), true, None, None, None,
     ).await;
 
@@ -32,13 +32,13 @@ pub async fn get_layer0(
 
 pub async fn put_layer0(
     State(state): State<AppState>,
-    agent: AuthenticatedAgent,
+    auth: AuthContext,
     Json(data): Json<Layer0Update>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let updated = db::layers::update_layer0(&state.pool, agent.api_key.user_id, &data).await?;
+    let updated = db::layers::update_layer0(&state.pool, auth.user_id, &data).await?;
 
     let _ = db::audit::log_access(
-        &state.pool, agent.api_key.user_id, Some(agent.api_key.id),
+        &state.pool, auth.user_id, auth.api_key_id,
         "update_layer0", Some("0"), true, None, None, None,
     ).await;
 
@@ -53,22 +53,22 @@ pub async fn put_layer0(
 
 pub async fn get_layer1(
     State(state): State<AppState>,
-    agent: AuthenticatedAgent,
+    auth: AuthContext,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !agent.has_permission("layer1") {
+    if !auth.has_permission("layer1") {
         let _ = db::audit::log_access(
-            &state.pool, agent.api_key.user_id, Some(agent.api_key.id),
+            &state.pool, auth.user_id, auth.api_key_id,
             "read_layer1", Some("1"), false, None, None, None,
         ).await;
         return Err(AppError::Forbidden("No permission for Layer 1".to_string()));
     }
 
-    let data = db::layers::get_layer1(&state.pool, agent.api_key.user_id)
+    let data = db::layers::get_layer1(&state.pool, auth.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Layer 1 data not found".to_string()))?;
 
     let _ = db::audit::log_access(
-        &state.pool, agent.api_key.user_id, Some(agent.api_key.id),
+        &state.pool, auth.user_id, auth.api_key_id,
         "read_layer1", Some("1"), true, None, None, None,
     ).await;
 
@@ -83,18 +83,18 @@ pub async fn get_layer1(
 
 pub async fn put_layer1(
     State(state): State<AppState>,
-    agent: AuthenticatedAgent,
+    auth: AuthContext,
     Json(data): Json<Layer1Update>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !agent.has_permission("layer1") {
+    if !auth.has_permission("layer1") {
         return Err(AppError::Forbidden("No permission for Layer 1".to_string()));
     }
 
-    let updated = db::layers::update_layer1(&state.pool, agent.api_key.user_id, &data).await?;
+    let updated = db::layers::update_layer1(&state.pool, auth.user_id, &data).await?;
 
     // Auto-embed Layer 1 context
     if db::system::is_auto_embedding_enabled(&state.pool).await {
-        if let Some(llm_key) = db::llm_keys::get_any_embedding_key(&state.pool, agent.api_key.user_id).await.ok().flatten() {
+        if let Some(llm_key) = db::llm_keys::get_any_embedding_key(&state.pool, auth.user_id).await.ok().flatten() {
             let mut context_text = String::new();
             if let Some(projects) = &updated.active_projects {
                 if let Some(arr) = projects.as_array() {
@@ -120,7 +120,7 @@ pub async fn put_layer1(
                 if let Some(key) = api_key {
                     let embed_provider = db::system::get_embedding_provider(&state.pool).await;
                     if let Ok(resp) = crate::llm::provider::get_embedding(&embed_provider, &key, &context_text).await {
-                        let _ = db::embeddings::upsert_context_embedding(&state.pool, agent.api_key.user_id, "layer1", "all", &context_text, &resp.embedding).await;
+                        let _ = db::embeddings::upsert_context_embedding(&state.pool, auth.user_id, "layer1", "all", &context_text, &resp.embedding).await;
                     }
                 }
             }
@@ -128,7 +128,7 @@ pub async fn put_layer1(
     }
 
     let _ = db::audit::log_access(
-        &state.pool, agent.api_key.user_id, Some(agent.api_key.id),
+        &state.pool, auth.user_id, auth.api_key_id,
         "update_layer1", Some("1"), true, None, None, None,
     ).await;
 
@@ -143,22 +143,22 @@ pub async fn put_layer1(
 
 pub async fn get_layer2(
     State(state): State<AppState>,
-    agent: AuthenticatedAgent,
+    auth: AuthContext,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !agent.has_permission("layer2") {
+    if !auth.has_permission("layer2") {
         let _ = db::audit::log_access(
-            &state.pool, agent.api_key.user_id, Some(agent.api_key.id),
+            &state.pool, auth.user_id, auth.api_key_id,
             "read_layer2", Some("2"), false, None, None, None,
         ).await;
         return Err(AppError::Forbidden("No permission for Layer 2".to_string()));
     }
 
-    let data = db::layers::get_layer2(&state.pool, agent.api_key.user_id)
+    let data = db::layers::get_layer2(&state.pool, auth.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Layer 2 data not found".to_string()))?;
 
     let _ = db::audit::log_access(
-        &state.pool, agent.api_key.user_id, Some(agent.api_key.id),
+        &state.pool, auth.user_id, auth.api_key_id,
         "read_layer2", Some("2"), true, None, None, None,
     ).await;
 
@@ -173,17 +173,17 @@ pub async fn get_layer2(
 
 pub async fn put_layer2(
     State(state): State<AppState>,
-    agent: AuthenticatedAgent,
+    auth: AuthContext,
     Json(data): Json<Layer2Update>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !agent.has_permission("layer2") {
+    if !auth.has_permission("layer2") {
         return Err(AppError::Forbidden("No permission for Layer 2".to_string()));
     }
 
-    let updated = db::layers::update_layer2(&state.pool, agent.api_key.user_id, &data).await?;
+    let updated = db::layers::update_layer2(&state.pool, auth.user_id, &data).await?;
 
     let _ = db::audit::log_access(
-        &state.pool, agent.api_key.user_id, Some(agent.api_key.id),
+        &state.pool, auth.user_id, auth.api_key_id,
         "update_layer2", Some("2"), true, None, None, None,
     ).await;
 

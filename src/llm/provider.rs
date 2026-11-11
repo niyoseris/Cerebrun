@@ -2,6 +2,31 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Duration;
 
+/// The pgvector columns are declared as `vector(1536)` to match OpenAI's
+/// text-embedding-3-small. Ollama's nomic-embed-text models return 768
+/// dimensions, so shorter embeddings are zero-padded and longer ones are
+/// truncated. Zero padding preserves cosine similarity.
+const EMBEDDING_DIM: usize = 1536;
+
+fn fit_embedding_dim(mut embedding: Vec<f32>) -> Vec<f32> {
+    if embedding.len() < EMBEDDING_DIM {
+        tracing::warn!(
+            "Embedding has {} dimensions; zero-padding to {} for pgvector",
+            embedding.len(),
+            EMBEDDING_DIM
+        );
+        embedding.resize(EMBEDDING_DIM, 0.0);
+    } else if embedding.len() > EMBEDDING_DIM {
+        tracing::warn!(
+            "Embedding has {} dimensions; truncating to {} for pgvector",
+            embedding.len(),
+            EMBEDDING_DIM
+        );
+        embedding.truncate(EMBEDDING_DIM);
+    }
+    embedding
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmMessage {
     pub role: String,
@@ -84,7 +109,16 @@ pub async fn call_llm(
         match call_provider(provider, model, api_key, messages).await {
             Ok(response) => return Ok(response),
             Err(e) => {
-                if e.contains("429") || e.contains("rate") || e.contains("timeout") {
+                let retryable = e.contains("429")
+                    || e.contains("rate")
+                    || e.contains("timeout")
+                    || e.contains("overloaded")
+                    || e.contains("error 500")
+                    || e.contains("error 502")
+                    || e.contains("error 503")
+                    || e.contains("error 504")
+                    || e.contains("error 529");
+                if retryable {
                     last_error = e;
                     continue;
                 }
@@ -117,11 +151,18 @@ async fn call_openai(
     messages: &[LlmMessage],
 ) -> Result<LlmResponse, String> {
     let client = reqwest::Client::new();
-    let body = json!({
+    let mut body = json!({
         "model": model,
         "messages": messages,
-        "max_tokens": 4096,
     });
+
+    // OpenAI's reasoning models (o1/o3/o4) reject the legacy `max_tokens`
+    // parameter and require `max_completion_tokens` instead.
+    if model.starts_with("o1") || model.starts_with("o3") || model.starts_with("o4") {
+        body["max_completion_tokens"] = json!(4096);
+    } else {
+        body["max_tokens"] = json!(4096);
+    }
 
     let resp = client
         .post("https://api.openai.com/v1/chat/completions")
@@ -383,6 +424,7 @@ async fn get_openai_embedding(api_key: &str, text: &str) -> Result<EmbeddingResp
         .iter()
         .filter_map(|v| v.as_f64().map(|f| f as f32))
         .collect();
+    let embedding = fit_embedding_dim(embedding);
 
     let total_tokens = data["usage"]["total_tokens"].as_i64().unwrap_or(0) as i32;
 
@@ -421,6 +463,7 @@ async fn get_ollama_embedding(api_key: &str, text: &str) -> Result<EmbeddingResp
         .iter()
         .filter_map(|v| v.as_f64().map(|f| f as f32))
         .collect();
+    let embedding = fit_embedding_dim(embedding);
 
     let total_tokens = data["usage"]["total_tokens"].as_i64().unwrap_or(0) as i32;
 
@@ -454,20 +497,14 @@ pub async fn validate_key(provider: &str, api_key: &str) -> Result<bool, String>
         }
         "anthropic" => {
             let resp = reqwest::Client::new()
-                .post("https://api.anthropic.com/v1/messages")
+                .get("https://api.anthropic.com/v1/models")
                 .header("x-api-key", api_key)
                 .header("anthropic-version", "2023-06-01")
-                .header("Content-Type", "application/json")
-                .json(&json!({
-                    "model": "claude-haiku-4",
-                    "max_tokens": 1,
-                    "messages": [{"role": "user", "content": "hi"}]
-                }))
                 .timeout(Duration::from_secs(10))
                 .send()
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(resp.status().is_success() || resp.status().as_u16() != 401)
+            Ok(resp.status().is_success())
         }
         "ollama" => {
             let resp = reqwest::Client::new()

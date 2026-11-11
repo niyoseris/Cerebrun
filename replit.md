@@ -97,11 +97,12 @@ static/dashboard/
 - `GET /api/knowledge/:id` - Get specific entry
 - `DELETE /api/knowledge/:id` - Delete entry
 
-### MCP Tools (13 tools)
+### MCP Tools (22 tools)
 - `get_context` - Read context layers 0-3
-- `update_context` - Update context layers 0-2 (auto-embeds Layer 1 items)
+- `update_context` - Update context layers 0-3 (layer 3 stores vault secrets when the key has vault permission)
 - `search_context` - Semantic vector search across context + knowledge (over-injection prevention)
 - `request_vault_access` - Request vault consent
+- `get_vault_data` - Read approved vault fields with a temporary consent token
 - `list_conversations` - List LLM conversations
 - `get_conversation` - Get conversation with messages
 - `search_conversations` - Keyword search conversations
@@ -111,6 +112,10 @@ static/dashboard/
 - `push_knowledge` - Store knowledge entry (auto-embedded for vector search)
 - `query_knowledge` - Search knowledge by keyword/category/tag
 - `list_knowledge_categories` - List categories with counts
+- `create_debate` / `join_debate` / `get_debate` / `list_debates` / `conclude_debate` - Multi-LLM debates
+- `get_version_history` - Version history for knowledge/context content
+- `delete_knowledge` - Soft-delete a knowledge entry (with optional history purge)
+- `update_knowledge` - Update a knowledge entry and preserve the previous version
 
 ## Environment Variables Required
 - `DATABASE_URL` - PostgreSQL connection string (auto-set)
@@ -120,6 +125,7 @@ static/dashboard/
 - `SESSION_SECRET` - Session encryption key
 
 ## Recent Changes
+- 2026-11-11: Reliability and security pass. Dashboard now works with session auth on context layers; API key creation/revocation and knowledge search/categories fixed; soft-deleted knowledge excluded from lists, counts and vector search; public debate page fixed (data embedding + XSS); debate ownership checks added; vault consent token surfaced in the dashboard and `get_vault_data` exposed as an MCP tool; migrations 006-008 wired into the runner (fresh-database deployments now create debates/version history/admin columns); Ollama embeddings padded to the 1536-d vector column; UTF-8 truncation panics fixed; A/B compare runs concurrently; internal errors no longer leak in HTTP responses.
 - 2026-02-23: MCP Agent Instructions - Added comprehensive `instructions` field to MCP initialize response with startup workflow, layer architecture guide, knowledge base best practices, LLM gateway usage, and security rules. Enhanced all 13 tool descriptions with detailed usage guidance, correct layer routing, and vault/secret management instructions.
 - 2026-02-22: Cross-conversation memory - LLM Gateway now retrieves recent messages from other conversations and injects them as context, enabling memory across conversation windows. Uses direct DB search (always works) + vector search (knowledge/context layers). Grouped by conversation with chronological ordering, token budget respected.
 - 2026-02-22: Vector embeddings + over-injection protection - pgvector extension, auto-embedding of knowledge and context items, search_context MCP tool for semantic search, only Layer 0 auto-injected in conversations, inject_context toggle and token budget per conversation

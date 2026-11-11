@@ -62,6 +62,14 @@ pub async fn list_knowledge(
     })))
 }
 
+pub async fn list_knowledge_categories(
+    State(state): State<AppState>,
+    session: SessionUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let categories = db::knowledge::list_categories(&state.pool, session.user.id).await?;
+    Ok(Json(serde_json::to_value(categories).unwrap_or_default()))
+}
+
 pub async fn get_knowledge(
     State(state): State<AppState>,
     session: SessionUser,

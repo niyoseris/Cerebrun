@@ -38,11 +38,27 @@ impl IntoResponse for AppError {
             AppError::OAuth(_) => (StatusCode::BAD_REQUEST, "OAuth error"),
         };
 
-        let body = axum::Json(json!({
-            "error": message,
-            "details": self.to_string()
-        }));
+        // Log the full details server-side, but never leak database errors,
+        // internal errors, or OAuth provider responses to the client.
+        match &self {
+            AppError::BadRequest(_) => {}
+            AppError::OAuth(_) => tracing::warn!("OAuth error: {}", self),
+            AppError::Unauthorized(_) | AppError::Forbidden(_) | AppError::NotFound(_) => {
+                tracing::debug!("Request rejected: {}", self)
+            }
+            AppError::Database(_) | AppError::Internal(_) => {
+                tracing::error!("Request failed: {}", self)
+            }
+        }
 
-        (status, body).into_response()
+        let body = match &self {
+            AppError::BadRequest(_) => json!({
+                "error": message,
+                "details": self.to_string()
+            }),
+            _ => json!({ "error": message }),
+        };
+
+        (status, axum::Json(body)).into_response()
     }
 }
