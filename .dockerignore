@@ -1,0 +1,9 @@
+target/
+.git/
+.github/
+attached_assets/
+.env
+.env.*
+!.env.docker.example
+backups/
+*.dump

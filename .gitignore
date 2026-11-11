@@ -2,4 +2,7 @@
 **/*.rs.bk
 *.pdb
 .env
-Cargo.lock
+.env.*
+!.env.docker.example
+backups/
+*.dump

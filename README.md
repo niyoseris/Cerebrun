@@ -26,6 +26,21 @@ Most AI interactions today are fragmented—each model has its own "vacuum" of c
 
 After signing in, open `/setup` (for example `https://cereb.run/setup`). It creates a scoped MCP key and generates ready-to-use configs for Cursor/Windsurf (native HTTP), Claude Desktop (via the `mcp-remote` bridge) and cURL, with a one-click connection test.
 
+## Quick start (Docker, personal use)
+
+```bash
+cp .env.docker.example .env
+# Edit .env: set POSTGRES_PASSWORD, SESSION_SECRET and Google OAuth credentials
+docker compose up -d --build
+# Open http://localhost:5050/setup
+```
+
+- Add `http://localhost:5050/auth/google/callback` to your Google OAuth client's authorized redirect URIs for local login.
+- For a public deployment, terminate TLS at a reverse proxy and set `GOOGLE_REDIRECT_URI` to the public callback URL.
+- `SESSION_SECRET` must be strong and stable: it derives the per-user encryption keys.
+- Backups: `./scripts/backup.sh`. Restore with `./scripts/restore.sh backups/<file>.dump` (the app is stopped during the restore).
+- The systemd deployment remains supported as an alternative.
+
 ## Development & Testing
 
 ```bash
