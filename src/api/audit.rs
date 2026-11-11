@@ -50,15 +50,17 @@ pub async fn export_data(
     let layer2 = db::layers::get_layer2(&state.pool, user_id).await?;
     let keys = db::api_keys::list_api_keys(&state.pool, user_id).await?;
 
-    let key_infos: Vec<crate::models::ApiKeyInfo> =
-        keys.into_iter().map(crate::models::ApiKeyInfo::from).collect();
+    let key_infos: Vec<crate::models::ApiKeyInfo> = keys
+        .into_iter()
+        .map(crate::models::ApiKeyInfo::from)
+        .collect();
 
     // Data portability: include the knowledge base and the full LLM
     // conversation history, not just the three context layers. Vault secrets
     // are intentionally excluded from the export for safety.
-    let knowledge = db::knowledge::query_knowledge(
-        &state.pool, user_id, None, None, None, None, 10_000, 0,
-    ).await?;
+    let knowledge =
+        db::knowledge::query_knowledge(&state.pool, user_id, None, None, None, None, 10_000, 0)
+            .await?;
 
     let conversations = db::conversations::list_conversations(&state.pool, user_id).await?;
     let mut conversation_exports = Vec::new();
@@ -97,7 +99,9 @@ pub async fn delete_account(
     Json(req): Json<DeleteAccountRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if req.confirm != "DELETE" {
-        return Err(AppError::BadRequest("Must confirm with 'DELETE'".to_string()));
+        return Err(AppError::BadRequest(
+            "Must confirm with 'DELETE'".to_string(),
+        ));
     }
 
     db::users::delete_user(&state.pool, session.user.id).await?;

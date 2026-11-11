@@ -22,6 +22,25 @@ Most AI interactions today are fragmented—each model has its own "vacuum" of c
 - **Frontend:** Vanilla JavaScript (Management Dashboard & Chat UI)
 - **Protocol:** MCP (Model Context Protocol) + REST API
 
+## Development & Testing
+
+```bash
+# Build
+cargo build --release
+
+# Unit tests (no database required)
+cargo test
+
+# Full suite: integration tests need PostgreSQL with pgcrypto + pgvector
+createdb cerebrun_test
+psql -d cerebrun_test -c "CREATE EXTENSION IF NOT EXISTS pgcrypto; CREATE EXTENSION IF NOT EXISTS vector;"
+TEST_DATABASE_URL=postgres://user:pass@localhost:5432/cerebrun_test cargo test --all-targets
+```
+
+Integration tests create and drop isolated schemas inside the test database, so they can run in parallel. CI uses the same suite against a `pgvector/pgvector:pg16` service.
+
+The running service reads configuration from environment variables (see `.env.example`). The `.env` file is not loaded by the binary.
+
 ## License & Intellectual Property
 
 This project is **Open Source**. You are free to view, study, and contribute to the code.

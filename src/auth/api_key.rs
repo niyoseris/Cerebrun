@@ -22,7 +22,8 @@ impl FromRequestParts<AppState> for AuthenticatedAgent {
     ) -> Result<Self, Self::Rejection> {
         let pool = state.pool.clone();
 
-        let auth_header = parts.headers
+        let auth_header = parts
+            .headers
             .get(http::header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
             .ok_or_else(|| AppError::Unauthorized("Missing Authorization header".to_string()))?;

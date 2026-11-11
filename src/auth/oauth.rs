@@ -42,7 +42,11 @@ fn get_redirect_uri(headers: &HeaderMap, config: &crate::config::AppConfig) -> S
     }
 
     if let Some(host) = headers.get("host").and_then(|v| v.to_str().ok()) {
-        let final_scheme = if host.contains("localhost") || host.contains("127.0.0.1") { "http" } else { "https" };
+        let final_scheme = if host.contains("localhost") || host.contains("127.0.0.1") {
+            "http"
+        } else {
+            "https"
+        };
         format!("{}://{}/auth/google/callback", final_scheme, host)
     } else {
         "http://localhost:5000/auth/google/callback".to_string()
@@ -58,26 +62,24 @@ pub async fn google_auth(
     let redirect_uri = get_redirect_uri(&headers, &state.config);
     tracing::info!("Google Auth Start - Redirect URI: {}", redirect_uri);
 
-    let secure = if redirect_uri.starts_with("https://") { "; Secure" } else { "" };
+    let secure = if redirect_uri.starts_with("https://") {
+        "; Secure"
+    } else {
+        ""
+    };
 
     let mut resp_headers = HeaderMap::new();
     let cookie_value = format!(
         "oauth_state={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax{}",
         csrf_state, secure
     );
-    resp_headers.insert(
-        http::header::SET_COOKIE,
-        cookie_value.parse().unwrap(),
-    );
+    resp_headers.insert(http::header::SET_COOKIE, cookie_value.parse().unwrap());
 
     let redirect_cookie = format!(
         "oauth_redirect_uri={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax{}",
         redirect_uri, secure
     );
-    resp_headers.append(
-        http::header::SET_COOKIE,
-        redirect_cookie.parse().unwrap(),
-    );
+    resp_headers.append(http::header::SET_COOKIE, redirect_cookie.parse().unwrap());
 
     let auth_url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=openid%20email%20profile&state={}&access_type=offline&prompt=consent",
@@ -93,7 +95,9 @@ pub async fn google_callback(
     headers: HeaderMap,
     Query(params): Query<OAuthCallback>,
 ) -> Result<(HeaderMap, Redirect), AppError> {
-    let callback_state = params.state.as_deref()
+    let callback_state = params
+        .state
+        .as_deref()
         .ok_or_else(|| AppError::OAuth("Missing OAuth state parameter".to_string()))?;
 
     let cookie_header = headers
@@ -110,7 +114,9 @@ pub async fn google_callback(
         .ok_or_else(|| AppError::OAuth("Missing OAuth state cookie".to_string()))?;
 
     if callback_state != stored_state {
-        return Err(AppError::OAuth("OAuth state mismatch - possible CSRF attack".to_string()));
+        return Err(AppError::OAuth(
+            "OAuth state mismatch - possible CSRF attack".to_string(),
+        ));
     }
 
     let redirect_uri = cookie_header
@@ -119,7 +125,7 @@ pub async fn google_callback(
         .next()
         .map(|s| s.to_string())
         .unwrap_or_else(|| get_redirect_uri(&headers, &state.config));
-    
+
     tracing::info!("Google Callback - Redirect URI: {}", redirect_uri);
     tracing::info!("Google Callback - State: {:?}", params.state);
 
@@ -158,7 +164,11 @@ pub async fn google_callback(
     }
 
     let token_response: GoogleTokenResponse = serde_json::from_str(&token_body).map_err(|e| {
-        tracing::error!("OAuth - Token JSON parsing failed: {} body={}", e, token_body);
+        tracing::error!(
+            "OAuth - Token JSON parsing failed: {} body={}",
+            e,
+            token_body
+        );
         AppError::OAuth("Token response could not be parsed".to_string())
     })?;
 
@@ -193,7 +203,11 @@ pub async fn google_callback(
     }
 
     let user_info: GoogleUserInfo = serde_json::from_str(&userinfo_body).map_err(|e| {
-        tracing::error!("OAuth - Failed to parse userinfo JSON: {} body={}", e, userinfo_body);
+        tracing::error!(
+            "OAuth - Failed to parse userinfo JSON: {} body={}",
+            e,
+            userinfo_body
+        );
         AppError::OAuth("User info response could not be parsed".to_string())
     })?;
 
@@ -219,17 +233,16 @@ pub async fn google_callback(
         "session={}; HttpOnly; Secure; Path=/; Max-Age=604800; SameSite=Lax",
         session_token
     );
-    resp_headers.insert(
-        http::header::SET_COOKIE,
-        session_cookie.parse().unwrap(),
-    );
+    resp_headers.insert(http::header::SET_COOKIE, session_cookie.parse().unwrap());
     resp_headers.append(
         http::header::SET_COOKIE,
         "oauth_state=; HttpOnly; Path=/; Max-Age=0".parse().unwrap(),
     );
     resp_headers.append(
         http::header::SET_COOKIE,
-        "oauth_redirect_uri=; HttpOnly; Path=/; Max-Age=0".parse().unwrap(),
+        "oauth_redirect_uri=; HttpOnly; Path=/; Max-Age=0"
+            .parse()
+            .unwrap(),
     );
 
     Ok((resp_headers, Redirect::temporary("/")))
@@ -265,8 +278,50 @@ pub async fn logout(
     let mut resp_headers = HeaderMap::new();
     resp_headers.insert(
         http::header::SET_COOKIE,
-        "session=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=Lax".parse().unwrap(),
+        "session=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=Lax"
+            .parse()
+            .unwrap(),
     );
 
-    Ok((resp_headers, axum::Json(serde_json::json!({"status": "ok"}))))
+    Ok((
+        resp_headers,
+        axum::Json(serde_json::json!({"status": "ok"})),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_redirect_uri;
+    use crate::config::AppConfig;
+    use axum::http::{HeaderMap, HeaderValue};
+
+    fn config(redirect_uri: &str) -> AppConfig {
+        AppConfig {
+            database_url: "postgres://unused".to_string(),
+            google_client_id: "id".to_string(),
+            google_client_secret: "secret".to_string(),
+            google_redirect_uri: redirect_uri.to_string(),
+            session_secret: "secret".to_string(),
+            server_host: "127.0.0.1".to_string(),
+            server_port: 0,
+        }
+    }
+
+    #[test]
+    fn configured_redirect_uri_wins_over_host_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("host", HeaderValue::from_static("www.cereb.run"));
+
+        let uri = get_redirect_uri(&headers, &config("https://cereb.run/auth/google/callback"));
+        assert_eq!(uri, "https://cereb.run/auth/google/callback");
+    }
+
+    #[test]
+    fn host_header_is_used_when_no_redirect_uri_is_configured() {
+        let mut headers = HeaderMap::new();
+        headers.insert("host", HeaderValue::from_static("localhost:5050"));
+
+        let uri = get_redirect_uri(&headers, &config(""));
+        assert_eq!(uri, "http://localhost:5050/auth/google/callback");
+    }
 }

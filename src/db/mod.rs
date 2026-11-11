@@ -1,16 +1,16 @@
-pub mod pool;
-pub mod users;
 pub mod api_keys;
-pub mod layers;
-pub mod vault;
 pub mod audit;
-pub mod llm_keys;
 pub mod conversations;
-pub mod llm_usage;
-pub mod knowledge;
-pub mod embeddings;
 pub mod debates;
-pub mod versions;
+pub mod embeddings;
+pub mod knowledge;
+pub mod layers;
+pub mod llm_keys;
+pub mod llm_usage;
+pub mod pool;
 pub mod system;
+pub mod users;
+pub mod vault;
+pub mod versions;
 
 pub use pool::*;

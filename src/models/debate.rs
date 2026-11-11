@@ -57,7 +57,7 @@ pub struct JoinDebateRequest {
     pub message: String,
     pub role: Option<String>,
     pub criteria_agreement: Option<Vec<String>>, // criteria items this participant agrees with
-    pub criteria_proposal: Option<Vec<String>>, // new criteria to propose
+    pub criteria_proposal: Option<Vec<String>>,  // new criteria to propose
 }
 
 #[derive(Debug, Deserialize)]

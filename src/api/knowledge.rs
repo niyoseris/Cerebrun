@@ -7,9 +7,9 @@ use uuid::Uuid;
 use crate::auth::SessionUser;
 use crate::db;
 use crate::error::AppError;
+use crate::llm::provider;
 use crate::models::{KnowledgeEntryInfo, PushKnowledgeRequest};
 use crate::AppState;
-use crate::llm::provider;
 
 #[derive(Debug, Deserialize)]
 pub struct KnowledgeQueryParams {
@@ -48,10 +48,12 @@ pub async fn list_knowledge(
         params.category.as_deref(),
         params.tag.as_deref(),
         params.source_project.as_deref(),
-    ).await?;
+    )
+    .await?;
     let categories = db::knowledge::list_categories(&state.pool, session.user.id).await?;
 
-    let items: Vec<KnowledgeEntryInfo> = entries.into_iter().map(KnowledgeEntryInfo::from).collect();
+    let items: Vec<KnowledgeEntryInfo> =
+        entries.into_iter().map(KnowledgeEntryInfo::from).collect();
 
     Ok(Json(json!({
         "entries": items,
@@ -90,7 +92,7 @@ pub async fn create_knowledge(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = session.user.id;
     let category = req.category.as_deref().unwrap_or("uncategorized");
-    
+
     let entry = db::knowledge::insert_knowledge(
         &state.pool,
         user_id,
@@ -102,28 +104,38 @@ pub async fn create_knowledge(
         req.source_agent.as_deref(),
         req.source_project.as_deref(),
         None,
-    ).await?;
+    )
+    .await?;
 
     // Auto-embedding
     if db::system::is_auto_embedding_enabled(&state.pool).await {
         let target_provider = db::system::get_embedding_provider(&state.pool).await;
-        if let Ok(Some(llm_key)) = db::llm_keys::get_provider_key(&state.pool, user_id, &target_provider).await {
-             let vault_key = crate::crypto::vault::derive_vault_key(&state.config.session_secret);
-             if let Ok(decrypted) = crate::crypto::vault::decrypt_vault_data(&llm_key.encrypted_key, &vault_key) {
+        if let Ok(Some(llm_key)) =
+            db::llm_keys::get_provider_key(&state.pool, user_id, &target_provider).await
+        {
+            let vault_key = crate::crypto::vault::derive_vault_key(&state.config.session_secret);
+            if let Ok(decrypted) =
+                crate::crypto::vault::decrypt_vault_data(&llm_key.encrypted_key, &vault_key)
+            {
                 if let Ok(api_key) = String::from_utf8(decrypted) {
                     let embed_text = if let Some(s) = &req.summary {
                         format!("{}: {}", s, req.content)
                     } else {
                         req.content.clone()
                     };
-                    
-                    if let Ok(resp) = provider::get_embedding(&target_provider, &api_key, &embed_text).await {
+
+                    if let Ok(resp) =
+                        provider::get_embedding(&target_provider, &api_key, &embed_text).await
+                    {
                         let _ = db::embeddings::update_knowledge_embedding(
-                            &state.pool, entry.id, &resp.embedding,
-                        ).await;
+                            &state.pool,
+                            entry.id,
+                            &resp.embedding,
+                        )
+                        .await;
                     }
                 }
-             }
+            }
         }
     }
 

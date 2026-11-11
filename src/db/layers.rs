@@ -40,7 +40,10 @@ pub async fn update_layer0(
     .await
 }
 
-pub async fn get_layer1(pool: &PgPool, user_id: Uuid) -> Result<Option<Layer1Context>, sqlx::Error> {
+pub async fn get_layer1(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Option<Layer1Context>, sqlx::Error> {
     sqlx::query_as::<_, Layer1Context>("SELECT * FROM layer1_context WHERE user_id = $1")
         .bind(user_id)
         .fetch_optional(pool)
@@ -75,7 +78,10 @@ pub async fn update_layer1(
     .await
 }
 
-pub async fn get_layer2(pool: &PgPool, user_id: Uuid) -> Result<Option<Layer2Personal>, sqlx::Error> {
+pub async fn get_layer2(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Option<Layer2Personal>, sqlx::Error> {
     sqlx::query_as::<_, Layer2Personal>("SELECT * FROM layer2_personal WHERE user_id = $1")
         .bind(user_id)
         .fetch_optional(pool)

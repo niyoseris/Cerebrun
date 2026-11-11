@@ -48,13 +48,11 @@ pub async fn get_conversation(
     conv_id: Uuid,
     user_id: Uuid,
 ) -> Result<Option<Conversation>, sqlx::Error> {
-    sqlx::query_as::<_, Conversation>(
-        "SELECT * FROM conversations WHERE id = $1 AND user_id = $2",
-    )
-    .bind(conv_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
+    sqlx::query_as::<_, Conversation>("SELECT * FROM conversations WHERE id = $1 AND user_id = $2")
+        .bind(conv_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
 }
 
 pub async fn add_message(

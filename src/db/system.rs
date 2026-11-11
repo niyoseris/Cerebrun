@@ -1,10 +1,10 @@
+use crate::models::system::*;
 use sqlx::PgPool;
 use uuid::Uuid;
-use crate::models::system::*;
 
 pub async fn list_system_models(pool: &PgPool) -> Result<Vec<SystemModel>, sqlx::Error> {
     sqlx::query_as::<_, SystemModel>(
-        "SELECT * FROM system_models WHERE is_active = true ORDER BY provider, created_at ASC"
+        "SELECT * FROM system_models WHERE is_active = true ORDER BY provider, created_at ASC",
     )
     .fetch_all(pool)
     .await
@@ -39,11 +39,15 @@ pub async fn delete_system_model(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::
     Ok(res.rows_affected() > 0)
 }
 
-pub async fn get_setting(pool: &PgPool, key: &str) -> Result<Option<serde_json::Value>, sqlx::Error> {
-    let row: Option<(serde_json::Value,)> = sqlx::query_as("SELECT value FROM system_settings WHERE key = $1")
-        .bind(key)
-        .fetch_optional(pool)
-        .await?;
+pub async fn get_setting(
+    pool: &PgPool,
+    key: &str,
+) -> Result<Option<serde_json::Value>, sqlx::Error> {
+    let row: Option<(serde_json::Value,)> =
+        sqlx::query_as("SELECT value FROM system_settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(pool)
+            .await?;
     Ok(row.map(|r| r.0))
 }
 
@@ -65,7 +69,11 @@ pub async fn get_embedding_provider(pool: &PgPool) -> String {
         .unwrap_or_else(|| "openai".to_string())
 }
 
-pub async fn set_setting(pool: &PgPool, key: &str, value: serde_json::Value) -> Result<(), sqlx::Error> {
+pub async fn set_setting(
+    pool: &PgPool,
+    key: &str,
+    value: serde_json::Value,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO system_settings (key, value, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()"
     )

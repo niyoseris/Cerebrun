@@ -388,7 +388,10 @@ pub async fn get_embedding(
     match provider {
         "openai" => get_openai_embedding(api_key, text).await,
         "ollama" => get_ollama_embedding(api_key, text).await,
-        _ => Err(format!("Embedding not supported for provider: {}. Use OpenAI or Ollama.", provider)),
+        _ => Err(format!(
+            "Embedding not supported for provider: {}. Use OpenAI or Ollama.",
+            provider
+        )),
     }
 }
 
@@ -413,7 +416,11 @@ async fn get_openai_embedding(api_key: &str, text: &str) -> Result<EmbeddingResp
     let text_resp = resp.text().await.map_err(|e| e.to_string())?;
 
     if !status.is_success() {
-        return Err(format!("OpenAI embedding error {}: {}", status.as_u16(), text_resp));
+        return Err(format!(
+            "OpenAI embedding error {}: {}",
+            status.as_u16(),
+            text_resp
+        ));
     }
 
     let data: serde_json::Value = serde_json::from_str(&text_resp).map_err(|e| e.to_string())?;
@@ -428,7 +435,10 @@ async fn get_openai_embedding(api_key: &str, text: &str) -> Result<EmbeddingResp
 
     let total_tokens = data["usage"]["total_tokens"].as_i64().unwrap_or(0) as i32;
 
-    Ok(EmbeddingResponse { embedding, total_tokens })
+    Ok(EmbeddingResponse {
+        embedding,
+        total_tokens,
+    })
 }
 
 async fn get_ollama_embedding(api_key: &str, text: &str) -> Result<EmbeddingResponse, String> {
@@ -452,7 +462,11 @@ async fn get_ollama_embedding(api_key: &str, text: &str) -> Result<EmbeddingResp
     let text_resp = resp.text().await.map_err(|e| e.to_string())?;
 
     if !status.is_success() {
-        return Err(format!("Ollama embedding error {}: {}", status.as_u16(), text_resp));
+        return Err(format!(
+            "Ollama embedding error {}: {}",
+            status.as_u16(),
+            text_resp
+        ));
     }
 
     let data: serde_json::Value = serde_json::from_str(&text_resp).map_err(|e| e.to_string())?;
@@ -467,7 +481,10 @@ async fn get_ollama_embedding(api_key: &str, text: &str) -> Result<EmbeddingResp
 
     let total_tokens = data["usage"]["total_tokens"].as_i64().unwrap_or(0) as i32;
 
-    Ok(EmbeddingResponse { embedding, total_tokens })
+    Ok(EmbeddingResponse {
+        embedding,
+        total_tokens,
+    })
 }
 
 pub async fn validate_key(provider: &str, api_key: &str) -> Result<bool, String> {
@@ -515,13 +532,35 @@ pub async fn validate_key(provider: &str, api_key: &str) -> Result<bool, String>
                 .send()
                 .await
                 .map_err(|e| e.to_string())?;
-            
+
             let status = resp.status();
             if status.as_u16() == 401 {
-                return Err("Ollama Cloud error 401: unauthorized. Please check your API key.".to_string());
+                return Err(
+                    "Ollama Cloud error 401: unauthorized. Please check your API key.".to_string(),
+                );
             }
             Ok(status.is_success())
         }
         _ => Err(format!("Unknown provider: {}", provider)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fit_embedding_dim;
+
+    #[test]
+    fn short_embeddings_are_zero_padded() {
+        let fitted = fit_embedding_dim(vec![1.0; 768]);
+        assert_eq!(fitted.len(), 1536);
+        assert_eq!(fitted[0], 1.0);
+        assert_eq!(fitted[767], 1.0);
+        assert_eq!(fitted[1535], 0.0);
+    }
+
+    #[test]
+    fn long_embeddings_are_truncated() {
+        let fitted = fit_embedding_dim(vec![1.0; 1600]);
+        assert_eq!(fitted.len(), 1536);
     }
 }

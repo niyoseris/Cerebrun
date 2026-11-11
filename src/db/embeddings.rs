@@ -11,7 +11,11 @@ pub async fn upsert_context_embedding(
 ) -> Result<(), sqlx::Error> {
     let embedding_str = format!(
         "[{}]",
-        embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+        embedding
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
     );
 
     sqlx::query(
@@ -40,16 +44,18 @@ pub async fn update_knowledge_embedding(
 ) -> Result<(), sqlx::Error> {
     let embedding_str = format!(
         "[{}]",
-        embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+        embedding
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
     );
 
-    sqlx::query(
-        "UPDATE knowledge_entries SET embedding = $1::vector WHERE id = $2",
-    )
-    .bind(&embedding_str)
-    .bind(knowledge_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE knowledge_entries SET embedding = $1::vector WHERE id = $2")
+        .bind(&embedding_str)
+        .bind(knowledge_id)
+        .execute(pool)
+        .await?;
 
     Ok(())
 }
@@ -71,7 +77,11 @@ pub async fn search_similar_context(
 ) -> Result<Vec<SimilarContextResult>, sqlx::Error> {
     let embedding_str = format!(
         "[{}]",
-        query_embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+        query_embedding
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
     );
 
     sqlx::query_as::<_, SimilarContextResult>(
@@ -114,7 +124,11 @@ pub async fn search_similar_knowledge(
 ) -> Result<Vec<SimilarKnowledgeResult>, sqlx::Error> {
     let embedding_str = format!(
         "[{}]",
-        query_embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+        query_embedding
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
     );
 
     sqlx::query_as::<_, SimilarKnowledgeResult>(

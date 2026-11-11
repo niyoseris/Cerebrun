@@ -62,7 +62,8 @@ pub async fn serve_debate_page(
         .replace('\u{2028}', "\\u2028")
         .replace('\u{2029}', "\\u2029");
     let title_escaped = html_escape(&debate.topic);
-    let html = format!(r#"<!DOCTYPE html>
+    let html = format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -210,7 +211,9 @@ function escapeHtml(text) {{
 loadDebate();
 </script>
 </body>
-</html>"#, title_escaped, json_for_script);
+</html>"#,
+        title_escaped, json_for_script
+    );
 
     Ok(axum::response::Html(html))
 }
@@ -280,20 +283,36 @@ pub async fn list_user_debates(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let result: Vec<serde_json::Value> = debates.iter().map(|d| {
-        json!({
-            "id": d.id,
-            "public_id": d.public_id,
-            "public_url": format!("https://cereb.run/debate/{}", d.public_id),
-            "topic": d.topic,
-            "status": d.status,
-            "completion_criteria": d.completion_criteria,
-            "consensus_reached": d.consensus_reached,
-            "created_at": d.created_at,
-            "updated_at": d.updated_at,
-            "concluded_at": d.concluded_at,
+    let result: Vec<serde_json::Value> = debates
+        .iter()
+        .map(|d| {
+            json!({
+                "id": d.id,
+                "public_id": d.public_id,
+                "public_url": format!("https://cereb.run/debate/{}", d.public_id),
+                "topic": d.topic,
+                "status": d.status,
+                "completion_criteria": d.completion_criteria,
+                "consensus_reached": d.consensus_reached,
+                "created_at": d.created_at,
+                "updated_at": d.updated_at,
+                "concluded_at": d.concluded_at,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(json!({ "debates": result, "count": result.len() })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::html_escape;
+
+    #[test]
+    fn escapes_dangerous_html_characters() {
+        assert_eq!(
+            html_escape(r#"<script>"&'"#),
+            "&lt;script&gt;&quot;&amp;&#39;"
+        );
+    }
 }

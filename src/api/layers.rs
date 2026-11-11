@@ -17,9 +17,17 @@ pub async fn get_layer0(
         .ok_or_else(|| AppError::NotFound("Layer 0 data not found".to_string()))?;
 
     let _ = db::audit::log_access(
-        &state.pool, auth.user_id, auth.api_key_id,
-        "read_layer0", Some("0"), true, None, None, None,
-    ).await;
+        &state.pool,
+        auth.user_id,
+        auth.api_key_id,
+        "read_layer0",
+        Some("0"),
+        true,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(json!({
         "language": data.language,
@@ -38,9 +46,17 @@ pub async fn put_layer0(
     let updated = db::layers::update_layer0(&state.pool, auth.user_id, &data).await?;
 
     let _ = db::audit::log_access(
-        &state.pool, auth.user_id, auth.api_key_id,
-        "update_layer0", Some("0"), true, None, None, None,
-    ).await;
+        &state.pool,
+        auth.user_id,
+        auth.api_key_id,
+        "update_layer0",
+        Some("0"),
+        true,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(json!({
         "language": updated.language,
@@ -57,9 +73,17 @@ pub async fn get_layer1(
 ) -> Result<Json<serde_json::Value>, AppError> {
     if !auth.has_permission("layer1") {
         let _ = db::audit::log_access(
-            &state.pool, auth.user_id, auth.api_key_id,
-            "read_layer1", Some("1"), false, None, None, None,
-        ).await;
+            &state.pool,
+            auth.user_id,
+            auth.api_key_id,
+            "read_layer1",
+            Some("1"),
+            false,
+            None,
+            None,
+            None,
+        )
+        .await;
         return Err(AppError::Forbidden("No permission for Layer 1".to_string()));
     }
 
@@ -68,9 +92,17 @@ pub async fn get_layer1(
         .ok_or_else(|| AppError::NotFound("Layer 1 data not found".to_string()))?;
 
     let _ = db::audit::log_access(
-        &state.pool, auth.user_id, auth.api_key_id,
-        "read_layer1", Some("1"), true, None, None, None,
-    ).await;
+        &state.pool,
+        auth.user_id,
+        auth.api_key_id,
+        "read_layer1",
+        Some("1"),
+        true,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(json!({
         "active_projects": data.active_projects,
@@ -94,33 +126,58 @@ pub async fn put_layer1(
 
     // Auto-embed Layer 1 context
     if db::system::is_auto_embedding_enabled(&state.pool).await {
-        if let Some(llm_key) = db::llm_keys::get_any_embedding_key(&state.pool, auth.user_id).await.ok().flatten() {
+        if let Some(llm_key) = db::llm_keys::get_any_embedding_key(&state.pool, auth.user_id)
+            .await
+            .ok()
+            .flatten()
+        {
             let mut context_text = String::new();
             if let Some(projects) = &updated.active_projects {
                 if let Some(arr) = projects.as_array() {
-                    let p_list: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                    let p_list: Vec<String> = arr
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect();
                     context_text.push_str(&format!("Projects: {}\n", p_list.join(", ")));
                 }
             }
             if let Some(goals) = &updated.current_goals {
                 if let Some(arr) = goals.as_array() {
-                    let g_list: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                    let g_list: Vec<String> = arr
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect();
                     context_text.push_str(&format!("Goals: {}\n", g_list.join("\n")));
                 }
             }
             if let Some(memories) = &updated.pinned_memories {
                 if let Some(arr) = memories.as_array() {
-                    let m_list: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                    let m_list: Vec<String> = arr
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect();
                     context_text.push_str(&format!("Memories: {}\n", m_list.join("\n")));
                 }
             }
-            
+
             if !context_text.is_empty() {
-                let api_key = crate::api::llm::decrypt_provider_key(&state, &llm_key.encrypted_key).ok();
+                let api_key =
+                    crate::api::llm::decrypt_provider_key(&state, &llm_key.encrypted_key).ok();
                 if let Some(key) = api_key {
                     let embed_provider = db::system::get_embedding_provider(&state.pool).await;
-                    if let Ok(resp) = crate::llm::provider::get_embedding(&embed_provider, &key, &context_text).await {
-                        let _ = db::embeddings::upsert_context_embedding(&state.pool, auth.user_id, "layer1", "all", &context_text, &resp.embedding).await;
+                    if let Ok(resp) =
+                        crate::llm::provider::get_embedding(&embed_provider, &key, &context_text)
+                            .await
+                    {
+                        let _ = db::embeddings::upsert_context_embedding(
+                            &state.pool,
+                            auth.user_id,
+                            "layer1",
+                            "all",
+                            &context_text,
+                            &resp.embedding,
+                        )
+                        .await;
                     }
                 }
             }
@@ -128,9 +185,17 @@ pub async fn put_layer1(
     }
 
     let _ = db::audit::log_access(
-        &state.pool, auth.user_id, auth.api_key_id,
-        "update_layer1", Some("1"), true, None, None, None,
-    ).await;
+        &state.pool,
+        auth.user_id,
+        auth.api_key_id,
+        "update_layer1",
+        Some("1"),
+        true,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(json!({
         "active_projects": updated.active_projects,
@@ -147,9 +212,17 @@ pub async fn get_layer2(
 ) -> Result<Json<serde_json::Value>, AppError> {
     if !auth.has_permission("layer2") {
         let _ = db::audit::log_access(
-            &state.pool, auth.user_id, auth.api_key_id,
-            "read_layer2", Some("2"), false, None, None, None,
-        ).await;
+            &state.pool,
+            auth.user_id,
+            auth.api_key_id,
+            "read_layer2",
+            Some("2"),
+            false,
+            None,
+            None,
+            None,
+        )
+        .await;
         return Err(AppError::Forbidden("No permission for Layer 2".to_string()));
     }
 
@@ -158,9 +231,17 @@ pub async fn get_layer2(
         .ok_or_else(|| AppError::NotFound("Layer 2 data not found".to_string()))?;
 
     let _ = db::audit::log_access(
-        &state.pool, auth.user_id, auth.api_key_id,
-        "read_layer2", Some("2"), true, None, None, None,
-    ).await;
+        &state.pool,
+        auth.user_id,
+        auth.api_key_id,
+        "read_layer2",
+        Some("2"),
+        true,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(json!({
         "display_name": data.display_name,
@@ -183,9 +264,17 @@ pub async fn put_layer2(
     let updated = db::layers::update_layer2(&state.pool, auth.user_id, &data).await?;
 
     let _ = db::audit::log_access(
-        &state.pool, auth.user_id, auth.api_key_id,
-        "update_layer2", Some("2"), true, None, None, None,
-    ).await;
+        &state.pool,
+        auth.user_id,
+        auth.api_key_id,
+        "update_layer2",
+        Some("2"),
+        true,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(json!({
         "display_name": updated.display_name,

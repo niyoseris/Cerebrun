@@ -24,7 +24,9 @@ pub async fn add_provider_key(
         .map_err(|e| AppError::Internal(format!("Key validation failed: {}", e)))?;
 
     if !valid {
-        return Err(AppError::BadRequest("Invalid API key. Please check and try again.".to_string()));
+        return Err(AppError::BadRequest(
+            "Invalid API key. Please check and try again.".to_string(),
+        ));
     }
 
     let key = vault_crypto::derive_vault_key(&state.config.session_secret);
@@ -54,7 +56,9 @@ pub async fn list_provider_keys(
     session: SessionUser,
 ) -> Result<Json<Vec<LlmProviderKeyInfo>>, AppError> {
     let keys = db::llm_keys::list_provider_keys(&state.pool, session.user.id).await?;
-    Ok(Json(keys.into_iter().map(LlmProviderKeyInfo::from).collect()))
+    Ok(Json(
+        keys.into_iter().map(LlmProviderKeyInfo::from).collect(),
+    ))
 }
 
 pub async fn delete_provider_key(
@@ -93,8 +97,13 @@ async fn build_cross_conversation_context(
     let mut chars_used = 0usize;
 
     if let Ok(recent_msgs) = db::conversations::get_recent_messages_from_other_conversations(
-        &state.pool, user_id, conv_id, 5
-    ).await {
+        &state.pool,
+        user_id,
+        conv_id,
+        5,
+    )
+    .await
+    {
         use std::collections::BTreeMap;
         let mut by_conv: BTreeMap<Uuid, Vec<&crate::models::ConversationMessage>> = BTreeMap::new();
         for msg in &recent_msgs {
@@ -104,10 +113,21 @@ async fn build_cross_conversation_context(
         if !by_conv.is_empty() {
             context.push_str("[Previous Conversations]\n");
             for (_conv_id, msgs) in &by_conv {
-                let last_msgs: Vec<_> = msgs.iter().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect();
+                let last_msgs: Vec<_> = msgs
+                    .iter()
+                    .rev()
+                    .take(6)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
                 let mut conv_text = String::from("---\n");
                 for msg in last_msgs {
-                    let role_label = if msg.role == "user" { "User" } else { "Assistant" };
+                    let role_label = if msg.role == "user" {
+                        "User"
+                    } else {
+                        "Assistant"
+                    };
                     let truncated = if msg.content.chars().count() > 300 {
                         format!("{}...", msg.content.chars().take(300).collect::<String>())
                     } else {
@@ -115,7 +135,9 @@ async fn build_cross_conversation_context(
                     };
                     conv_text.push_str(&format!("{}: {}\n", role_label, truncated));
                 }
-                if chars_used + conv_text.len() > char_limit { break; }
+                if chars_used + conv_text.len() > char_limit {
+                    break;
+                }
                 context.push_str(&conv_text);
                 chars_used += conv_text.len();
             }
@@ -124,25 +146,43 @@ async fn build_cross_conversation_context(
     }
 
     // 2. Vector search: knowledge base and context layers (when embeddings available)
-    if let Some((emb_provider, emb_key)) = crate::mcp::server::get_embedding_key(state, user_id).await {
+    if let Some((emb_provider, emb_key)) =
+        crate::mcp::server::get_embedding_key(state, user_id).await
+    {
         if let Ok(query_resp) = provider::get_embedding(&emb_provider, &emb_key, message).await {
             if let Ok(knowledge_results) = db::embeddings::search_similar_knowledge(
-                &state.pool, user_id, &query_resp.embedding, 5, 0.5
-            ).await {
+                &state.pool,
+                user_id,
+                &query_resp.embedding,
+                5,
+                0.5,
+            )
+            .await
+            {
                 for k in knowledge_results {
                     let entry = format!("[Knowledge: {}] {}\n", k.category, k.content);
-                    if chars_used + entry.len() > char_limit { break; }
+                    if chars_used + entry.len() > char_limit {
+                        break;
+                    }
                     context.push_str(&entry);
                     chars_used += entry.len();
                 }
             }
 
             if let Ok(context_results) = db::embeddings::search_similar_context(
-                &state.pool, user_id, &query_resp.embedding, 5, 0.5
-            ).await {
+                &state.pool,
+                user_id,
+                &query_resp.embedding,
+                5,
+                0.5,
+            )
+            .await
+            {
                 for c in context_results {
                     let entry = format!("[Context: {}] {}\n", c.source_type, c.content_text);
-                    if chars_used + entry.len() > char_limit { break; }
+                    if chars_used + entry.len() > char_limit {
+                        break;
+                    }
                     context.push_str(&entry);
                     chars_used += entry.len();
                 }
@@ -176,7 +216,10 @@ fn build_system_prompt_layer0_only(layer0: Option<&Layer0Public>) -> String {
         return String::new();
     }
 
-    format!("You are a helpful assistant. Here is context about the user:\n\n{}", parts.join("\n\n"))
+    format!(
+        "You are a helpful assistant. Here is context about the user:\n\n{}",
+        parts.join("\n\n")
+    )
 }
 
 pub async fn create_conversation(
@@ -200,7 +243,11 @@ pub async fn create_conversation(
         &req.provider,
         &req.model,
         req.title.as_deref(),
-        if system_prompt.is_empty() { None } else { Some(&system_prompt) },
+        if system_prompt.is_empty() {
+            None
+        } else {
+            Some(&system_prompt)
+        },
         None,
         None,
     )
@@ -251,7 +298,8 @@ pub async fn delete_conversation(
     session: SessionUser,
     Path(conv_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let deleted = db::conversations::delete_conversation(&state.pool, conv_id, session.user.id).await?;
+    let deleted =
+        db::conversations::delete_conversation(&state.pool, conv_id, session.user.id).await?;
     if !deleted {
         return Err(AppError::NotFound("Conversation not found".to_string()));
     }
@@ -273,20 +321,35 @@ pub async fn chat(
 
     let provider_key = db::llm_keys::get_provider_key(&state.pool, session.user.id, prov)
         .await?
-        .ok_or_else(|| AppError::BadRequest(format!("No API key configured for provider: {}", prov)))?;
+        .ok_or_else(|| {
+            AppError::BadRequest(format!("No API key configured for provider: {}", prov))
+        })?;
 
     let api_key = decrypt_provider_key(&state, &provider_key.encrypted_key)?;
 
     let _user_msg = db::conversations::add_message(
-        &state.pool, conv_id, "user", &req.message, None, None, 0, 0, 0,
-    ).await?;
+        &state.pool,
+        conv_id,
+        "user",
+        &req.message,
+        None,
+        None,
+        0,
+        0,
+        0,
+    )
+    .await?;
 
     // Build cross-conversation memory context
     let injected_context = build_cross_conversation_context(
-        &state, session.user.id, conv_id, &req.message,
+        &state,
+        session.user.id,
+        conv_id,
+        &req.message,
         conv.inject_context.unwrap_or(true),
         conv.context_token_budget.unwrap_or(2000),
-    ).await;
+    )
+    .await;
 
     let history = db::conversations::get_messages(&state.pool, conv_id).await?;
     let mut llm_messages: Vec<provider::LlmMessage> = Vec::new();
@@ -319,16 +382,30 @@ pub async fn chat(
         .map_err(|e| AppError::Internal(e))?;
 
     let assistant_msg = db::conversations::add_message(
-        &state.pool, conv_id, "assistant", &response.content,
-        Some(prov), Some(mdl),
-        response.prompt_tokens, response.completion_tokens, response.total_tokens,
-    ).await?;
+        &state.pool,
+        conv_id,
+        "assistant",
+        &response.content,
+        Some(prov),
+        Some(mdl),
+        response.prompt_tokens,
+        response.completion_tokens,
+        response.total_tokens,
+    )
+    .await?;
 
     let _ = db::llm_usage::record_usage(
-        &state.pool, session.user.id, Some(conv_id), Some(assistant_msg.id),
-        prov, mdl, response.prompt_tokens, response.completion_tokens,
+        &state.pool,
+        session.user.id,
+        Some(conv_id),
+        Some(assistant_msg.id),
+        prov,
+        mdl,
+        response.prompt_tokens,
+        response.completion_tokens,
         response.total_tokens,
-    ).await;
+    )
+    .await;
 
     Ok(Json(ChatResponse {
         message: assistant_msg,
@@ -361,29 +438,30 @@ pub async fn compare(
         let model = target.model.clone();
 
         async move {
-            let provider_key = match db::llm_keys::get_provider_key(&state.pool, user_id, &provider_name).await {
-                Ok(Some(key)) => key,
-                Ok(None) => {
-                    return json!({
-                        "provider": provider_name.clone(),
-                        "model": model,
-                        "content": null,
-                        "error": format!("No API key for: {}", provider_name),
-                        "latency_ms": 0,
-                        "status": "error",
-                    })
-                }
-                Err(e) => {
-                    return json!({
-                        "provider": provider_name.clone(),
-                        "model": model,
-                        "content": null,
-                        "error": e.to_string(),
-                        "latency_ms": 0,
-                        "status": "error",
-                    })
-                }
-            };
+            let provider_key =
+                match db::llm_keys::get_provider_key(&state.pool, user_id, &provider_name).await {
+                    Ok(Some(key)) => key,
+                    Ok(None) => {
+                        return json!({
+                            "provider": provider_name.clone(),
+                            "model": model,
+                            "content": null,
+                            "error": format!("No API key for: {}", provider_name),
+                            "latency_ms": 0,
+                            "status": "error",
+                        })
+                    }
+                    Err(e) => {
+                        return json!({
+                            "provider": provider_name.clone(),
+                            "model": model,
+                            "content": null,
+                            "error": e.to_string(),
+                            "latency_ms": 0,
+                            "status": "error",
+                        })
+                    }
+                };
 
             let api_key = match decrypt_provider_key(&state, &provider_key.encrypted_key) {
                 Ok(key) => key,
@@ -418,10 +496,17 @@ pub async fn compare(
             match response {
                 Ok(resp) => {
                     let _ = db::llm_usage::record_usage(
-                        &state.pool, user_id, None, None,
-                        &provider_name, &model,
-                        resp.prompt_tokens, resp.completion_tokens, resp.total_tokens,
-                    ).await;
+                        &state.pool,
+                        user_id,
+                        None,
+                        None,
+                        &provider_name,
+                        &model,
+                        resp.prompt_tokens,
+                        resp.completion_tokens,
+                        resp.total_tokens,
+                    )
+                    .await;
 
                     json!({
                         "provider": provider_name,
@@ -463,7 +548,8 @@ pub async fn fork_conversation(
         .await?
         .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
 
-    let messages_to_copy = db::conversations::get_messages_up_to(&state.pool, conv_id, req.message_id).await?;
+    let messages_to_copy =
+        db::conversations::get_messages_up_to(&state.pool, conv_id, req.message_id).await?;
 
     let layer0 = db::layers::get_layer0(&state.pool, session.user.id).await?;
     let system_prompt = build_system_prompt_layer0_only(layer0.as_ref());
@@ -473,8 +559,15 @@ pub async fn fork_conversation(
         session.user.id,
         &req.new_provider,
         &req.new_model,
-        Some(&format!("Fork from {} to {}", _original.model, req.new_model)),
-        if system_prompt.is_empty() { None } else { Some(&system_prompt) },
+        Some(&format!(
+            "Fork from {} to {}",
+            _original.model, req.new_model
+        )),
+        if system_prompt.is_empty() {
+            None
+        } else {
+            Some(&system_prompt)
+        },
         Some(conv_id),
         Some(req.message_id),
     )
@@ -482,11 +575,17 @@ pub async fn fork_conversation(
 
     for msg in &messages_to_copy {
         let _ = db::conversations::add_message(
-            &state.pool, new_conv.id, &msg.role, &msg.content,
-            msg.provider.as_deref(), msg.model.as_deref(),
-            msg.prompt_tokens.unwrap_or(0), msg.completion_tokens.unwrap_or(0),
+            &state.pool,
+            new_conv.id,
+            &msg.role,
+            &msg.content,
+            msg.provider.as_deref(),
+            msg.model.as_deref(),
+            msg.prompt_tokens.unwrap_or(0),
+            msg.completion_tokens.unwrap_or(0),
             msg.total_tokens.unwrap_or(0),
-        ).await?;
+        )
+        .await?;
     }
 
     Ok(Json(new_conv))
@@ -516,7 +615,11 @@ pub async fn stream_chat(
         .await?
         .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
 
-    let prov = req.provider.as_deref().unwrap_or(&conv.provider).to_string();
+    let prov = req
+        .provider
+        .as_deref()
+        .unwrap_or(&conv.provider)
+        .to_string();
     let mdl = req.model.as_deref().unwrap_or(&conv.model).to_string();
 
     let provider_key = db::llm_keys::get_provider_key(&state.pool, session.user.id, &prov)
@@ -526,15 +629,28 @@ pub async fn stream_chat(
     let api_key = decrypt_provider_key(&state, &provider_key.encrypted_key)?;
 
     let _user_msg = db::conversations::add_message(
-        &state.pool, conv_id, "user", &req.message, None, None, 0, 0, 0,
-    ).await?;
+        &state.pool,
+        conv_id,
+        "user",
+        &req.message,
+        None,
+        None,
+        0,
+        0,
+        0,
+    )
+    .await?;
 
     // Build cross-conversation memory context
     let injected_context = build_cross_conversation_context(
-        &state, session.user.id, conv_id, &req.message,
+        &state,
+        session.user.id,
+        conv_id,
+        &req.message,
         conv.inject_context.unwrap_or(true),
         conv.context_token_budget.unwrap_or(2000),
-    ).await;
+    )
+    .await;
 
     let history = db::conversations::get_messages(&state.pool, conv_id).await?;
     let mut llm_messages: Vec<provider::LlmMessage> = Vec::new();
@@ -613,15 +729,16 @@ pub async fn get_models(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let db_models = db::system::list_system_models(&state.pool).await?;
     let mut result = serde_json::Map::new();
-    
+
     for m in db_models {
-        result.entry(m.provider)
+        result
+            .entry(m.provider)
             .or_insert(json!(Vec::<String>::new()))
             .as_array_mut()
             .unwrap()
             .push(json!(m.model_name));
     }
-    
+
     // If DB is empty, fallback to hardcoded
     if result.is_empty() {
         let providers = provider::supported_providers();
@@ -630,6 +747,6 @@ pub async fn get_models(
             result.insert(p.to_string(), json!(models));
         }
     }
-    
+
     Ok(Json(json!(result)))
 }

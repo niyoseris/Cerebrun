@@ -49,7 +49,10 @@ pub async fn query_knowledge(
     let mut param_idx = 2;
 
     if keyword.is_some() {
-        conditions.push(format!("(content ILIKE ${0} OR summary ILIKE ${0})", param_idx));
+        conditions.push(format!(
+            "(content ILIKE ${0} OR summary ILIKE ${0})",
+            param_idx
+        ));
         param_idx += 1;
     }
     if category.is_some() {
@@ -66,7 +69,8 @@ pub async fn query_knowledge(
     }
 
     let where_clause = conditions.join(" AND ");
-    let query_str = format!(
+    let query_str =
+        format!(
         "SELECT * FROM knowledge_entries WHERE {} ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
         where_clause, param_idx, param_idx + 1
     );
@@ -104,11 +108,7 @@ pub async fn get_knowledge_by_id(
     .await
 }
 
-pub async fn delete_knowledge(
-    pool: &PgPool,
-    id: Uuid,
-    user_id: Uuid,
-) -> Result<bool, sqlx::Error> {
+pub async fn delete_knowledge(pool: &PgPool, id: Uuid, user_id: Uuid) -> Result<bool, sqlx::Error> {
     let result = sqlx::query("UPDATE knowledge_entries SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL")
         .bind(id)
         .bind(user_id)
@@ -147,7 +147,10 @@ pub async fn count_knowledge(
     let mut param_idx = 2;
 
     if keyword.is_some() {
-        conditions.push(format!("(content ILIKE ${0} OR summary ILIKE ${0})", param_idx));
+        conditions.push(format!(
+            "(content ILIKE ${0} OR summary ILIKE ${0})",
+            param_idx
+        ));
         param_idx += 1;
     }
     if category.is_some() {
@@ -164,7 +167,10 @@ pub async fn count_knowledge(
     }
 
     let where_clause = conditions.join(" AND ");
-    let query_str = format!("SELECT COUNT(*) FROM knowledge_entries WHERE {}", where_clause);
+    let query_str = format!(
+        "SELECT COUNT(*) FROM knowledge_entries WHERE {}",
+        where_clause
+    );
 
     let mut query = sqlx::query_scalar::<_, i64>(&query_str).bind(user_id);
 

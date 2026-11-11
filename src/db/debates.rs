@@ -216,12 +216,11 @@ pub async fn list_messages(
 }
 
 pub async fn get_current_round(pool: &PgPool, debate_id: Uuid) -> Result<i32, sqlx::Error> {
-    let result: (i32,) = sqlx::query_as(
-        "SELECT COALESCE(MAX(round), 0) FROM debate_messages WHERE debate_id = $1",
-    )
-    .bind(debate_id)
-    .fetch_one(pool)
-    .await?;
+    let result: (i32,) =
+        sqlx::query_as("SELECT COALESCE(MAX(round), 0) FROM debate_messages WHERE debate_id = $1")
+            .bind(debate_id)
+            .fetch_one(pool)
+            .await?;
     Ok(result.0)
 }
 

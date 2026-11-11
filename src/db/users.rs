@@ -29,12 +29,10 @@ pub async fn upsert_user(
     .fetch_one(pool)
     .await?;
 
-    sqlx::query(
-        "INSERT INTO layer0_public (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",
-    )
-    .bind(user.id)
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT INTO layer0_public (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING")
+        .bind(user.id)
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         "INSERT INTO layer1_context (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",

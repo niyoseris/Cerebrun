@@ -23,6 +23,6 @@ pub struct ContentVersion {
 pub struct DeleteConfirmation {
     pub content_type: String,
     pub content_id: String,
-    pub confirm: bool, // first confirmation
+    pub confirm: bool,     // first confirmation
     pub force_purge: bool, // if true, also delete version history
 }

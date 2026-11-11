@@ -56,9 +56,9 @@ impl FromRequestParts<AppState> for AuthContext {
             .get(http::header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
         {
-            let token = auth_header
-                .strip_prefix("Bearer ")
-                .ok_or_else(|| AppError::Unauthorized("Invalid Authorization format".to_string()))?;
+            let token = auth_header.strip_prefix("Bearer ").ok_or_else(|| {
+                AppError::Unauthorized("Invalid Authorization format".to_string())
+            })?;
 
             let key_hash = sha256_hash(token);
             let api_key = db::api_keys::get_api_key_by_hash(&state.pool, &key_hash)

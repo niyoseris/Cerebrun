@@ -25,9 +25,17 @@ pub async fn request_vault_access(
     .await?;
 
     let _ = db::audit::log_access(
-        &state.pool, agent.api_key.user_id, Some(agent.api_key.id),
-        "vault_access_request", Some("3"), true, None, None, None,
-    ).await;
+        &state.pool,
+        agent.api_key.user_id,
+        Some(agent.api_key.id),
+        "vault_access_request",
+        Some("3"),
+        true,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(json!({
         "request_id": consent.id,
@@ -54,13 +62,23 @@ pub async fn approve_vault_request(
     .await?;
 
     if !approved {
-        return Err(AppError::NotFound("Consent request not found or already resolved".to_string()));
+        return Err(AppError::NotFound(
+            "Consent request not found or already resolved".to_string(),
+        ));
     }
 
     let _ = db::audit::log_access(
-        &state.pool, session.user.id, None,
-        "vault_consent_approved", Some("3"), true, None, None, None,
-    ).await;
+        &state.pool,
+        session.user.id,
+        None,
+        "vault_consent_approved",
+        Some("3"),
+        true,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(json!({
         "vault_token": vault_token,
@@ -73,21 +91,27 @@ pub async fn deny_vault_request(
     session: SessionUser,
     Json(req): Json<VaultDenyRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let denied = db::vault::deny_consent_request(
-        &state.pool,
-        req.request_id,
-        session.user.id,
-    )
-    .await?;
+    let denied =
+        db::vault::deny_consent_request(&state.pool, req.request_id, session.user.id).await?;
 
     if !denied {
-        return Err(AppError::NotFound("Consent request not found or already resolved".to_string()));
+        return Err(AppError::NotFound(
+            "Consent request not found or already resolved".to_string(),
+        ));
     }
 
     let _ = db::audit::log_access(
-        &state.pool, session.user.id, None,
-        "vault_consent_denied", Some("3"), true, None, None, None,
-    ).await;
+        &state.pool,
+        session.user.id,
+        None,
+        "vault_consent_denied",
+        Some("3"),
+        true,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(json!({"status": "ok"})))
 }
@@ -106,8 +130,11 @@ pub async fn get_vault_context_dashboard(
 
     let all_data: serde_json::Value = serde_json::from_slice(&decrypted)
         .map_err(|e| AppError::Internal(format!("Invalid vault data: {}", e)))?;
-    
-    let keys: Vec<String> = all_data.as_object().map(|obj| obj.keys().cloned().collect()).unwrap_or_default();
+
+    let keys: Vec<String> = all_data
+        .as_object()
+        .map(|obj| obj.keys().cloned().collect())
+        .unwrap_or_default();
     Ok(Json(json!({ "keys": keys })))
 }
 
@@ -138,8 +165,8 @@ pub async fn get_vault_context(
     let all_data: serde_json::Value = serde_json::from_slice(&decrypted)
         .map_err(|e| AppError::Internal(format!("Invalid vault data: {}", e)))?;
 
-    let requested_fields: Vec<String> = serde_json::from_value(consent.requested_data)
-        .unwrap_or_default();
+    let requested_fields: Vec<String> =
+        serde_json::from_value(consent.requested_data).unwrap_or_default();
 
     let mut filtered = serde_json::Map::new();
     for field in &requested_fields {
@@ -156,9 +183,17 @@ pub async fn get_vault_context(
     }
 
     let _ = db::audit::log_access(
-        &state.pool, agent.api_key.user_id, Some(agent.api_key.id),
-        "vault_access", Some("3"), true, None, None, None,
-    ).await;
+        &state.pool,
+        agent.api_key.user_id,
+        Some(agent.api_key.id),
+        "vault_access",
+        Some("3"),
+        true,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(serde_json::Value::Object(filtered)))
 }
@@ -168,14 +203,15 @@ pub async fn put_vault_context(
     session: SessionUser,
     Json(new_data): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let mut current_data = if let Some(vault) = db::vault::get_vault(&state.pool, session.user.id).await? {
-        let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-        let decrypted = vault_crypto::decrypt_vault_data(&vault.encrypted_data, &key)
-            .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
-        serde_json::from_slice(&decrypted).unwrap_or_else(|_| json!({}))
-    } else {
-        json!({})
-    };
+    let mut current_data =
+        if let Some(vault) = db::vault::get_vault(&state.pool, session.user.id).await? {
+            let key = vault_crypto::derive_vault_key(&state.config.session_secret);
+            let decrypted = vault_crypto::decrypt_vault_data(&vault.encrypted_data, &key)
+                .map_err(|e| AppError::Internal(format!("Vault decryption failed: {}", e)))?;
+            serde_json::from_slice(&decrypted).unwrap_or_else(|_| json!({}))
+        } else {
+            json!({})
+        };
 
     if let Some(obj) = new_data.as_object() {
         let keys: Vec<String> = obj.keys().cloned().collect();
@@ -184,18 +220,27 @@ pub async fn put_vault_context(
                 current_obj.insert(k.clone(), v.clone());
             }
         }
-        
+
         let key = vault_crypto::derive_vault_key(&state.config.session_secret);
-        let encrypted = vault_crypto::encrypt_vault_data(&serde_json::to_vec(&current_data).unwrap(), &key)
-            .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
-        
+        let encrypted =
+            vault_crypto::encrypt_vault_data(&serde_json::to_vec(&current_data).unwrap(), &key)
+                .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
+
         let key_hash = sha256_hash(&state.config.session_secret);
         db::vault::upsert_vault(&state.pool, session.user.id, &key_hash, &encrypted).await?;
 
         let _ = db::audit::log_access(
-            &state.pool, session.user.id, None,
-            "update_vault", Some("3"), true, None, None, Some(&serde_json::to_value(keys).unwrap()),
-        ).await;
+            &state.pool,
+            session.user.id,
+            None,
+            "update_vault",
+            Some("3"),
+            true,
+            None,
+            None,
+            Some(&serde_json::to_value(keys).unwrap()),
+        )
+        .await;
     }
 
     Ok(Json(json!({"status": "ok"})))
@@ -224,23 +269,35 @@ pub async fn delete_vault_key(
 
     let mut all_data: serde_json::Value = serde_json::from_slice(&decrypted)
         .map_err(|e| AppError::Internal(format!("Invalid vault data: {}", e)))?;
-    
+
     if let Some(obj) = all_data.as_object_mut() {
         if obj.remove(&key_name).is_some() {
-            let encrypted = vault_crypto::encrypt_vault_data(&serde_json::to_vec(&all_data).unwrap(), &key)
-                .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
-            
+            let encrypted =
+                vault_crypto::encrypt_vault_data(&serde_json::to_vec(&all_data).unwrap(), &key)
+                    .map_err(|e| AppError::Internal(format!("Vault encryption failed: {}", e)))?;
+
             let key_hash = sha256_hash(&state.config.session_secret);
             db::vault::upsert_vault(&state.pool, session.user.id, &key_hash, &encrypted).await?;
 
             let _ = db::audit::log_access(
-                &state.pool, session.user.id, None,
-                "delete_vault_key", Some("3"), true, None, None, Some(&serde_json::Value::String(key_name.clone())),
-            ).await;
+                &state.pool,
+                session.user.id,
+                None,
+                "delete_vault_key",
+                Some("3"),
+                true,
+                None,
+                None,
+                Some(&serde_json::Value::String(key_name.clone())),
+            )
+            .await;
 
             return Ok(Json(json!({"status": "ok"})));
         }
     }
 
-    Err(AppError::NotFound(format!("Key '{}' not found in vault", key_name)))
+    Err(AppError::NotFound(format!(
+        "Key '{}' not found in vault",
+        key_name
+    )))
 }

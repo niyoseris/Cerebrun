@@ -25,13 +25,14 @@ pub async fn create_api_key(
     .await
 }
 
-pub async fn get_api_key_by_hash(pool: &PgPool, key_hash: &str) -> Result<Option<ApiKey>, sqlx::Error> {
-    sqlx::query_as::<_, ApiKey>(
-        "SELECT * FROM api_keys WHERE key_hash = $1 AND status = 'active'",
-    )
-    .bind(key_hash)
-    .fetch_optional(pool)
-    .await
+pub async fn get_api_key_by_hash(
+    pool: &PgPool,
+    key_hash: &str,
+) -> Result<Option<ApiKey>, sqlx::Error> {
+    sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE key_hash = $1 AND status = 'active'")
+        .bind(key_hash)
+        .fetch_optional(pool)
+        .await
 }
 
 pub async fn list_api_keys(pool: &PgPool, user_id: Uuid) -> Result<Vec<ApiKey>, sqlx::Error> {
@@ -43,7 +44,11 @@ pub async fn list_api_keys(pool: &PgPool, user_id: Uuid) -> Result<Vec<ApiKey>, 
     .await
 }
 
-pub async fn delete_api_key(pool: &PgPool, key_id: Uuid, user_id: Uuid) -> Result<bool, sqlx::Error> {
+pub async fn delete_api_key(
+    pool: &PgPool,
+    key_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, sqlx::Error> {
     let result = sqlx::query("DELETE FROM api_keys WHERE id = $1 AND user_id = $2")
         .bind(key_id)
         .bind(user_id)
@@ -52,14 +57,17 @@ pub async fn delete_api_key(pool: &PgPool, key_id: Uuid, user_id: Uuid) -> Resul
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn revoke_api_key(pool: &PgPool, key_id: Uuid, user_id: Uuid) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query(
-        "UPDATE api_keys SET status = 'revoked' WHERE id = $1 AND user_id = $2",
-    )
-    .bind(key_id)
-    .bind(user_id)
-    .execute(pool)
-    .await?;
+pub async fn revoke_api_key(
+    pool: &PgPool,
+    key_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let result =
+        sqlx::query("UPDATE api_keys SET status = 'revoked' WHERE id = $1 AND user_id = $2")
+            .bind(key_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
     Ok(result.rows_affected() > 0)
 }
 

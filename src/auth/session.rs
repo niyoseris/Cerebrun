@@ -24,7 +24,11 @@ impl FromRequestParts<AppState> for SessionUser {
     ) -> Result<Self, Self::Rejection> {
         let pool = state.pool.clone();
 
-        let cookie_header = match parts.headers.get(http::header::COOKIE).and_then(|v| v.to_str().ok()) {
+        let cookie_header = match parts
+            .headers
+            .get(http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+        {
             Some(c) => c,
             None => return Err(AppError::Unauthorized("No session cookie".to_string())),
         };
@@ -64,14 +68,12 @@ pub async fn create_session(pool: &PgPool, user_id: Uuid) -> Result<String, sqlx
     let token_hash = sha256_hash(&token);
     let expires_at = Utc::now() + Duration::days(7);
 
-    sqlx::query(
-        "INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-    )
-    .bind(user_id)
-    .bind(&token_hash)
-    .bind(expires_at)
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)")
+        .bind(user_id)
+        .bind(&token_hash)
+        .bind(expires_at)
+        .execute(pool)
+        .await?;
 
     Ok(token)
 }
