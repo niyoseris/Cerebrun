@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connect an Agent — Cerebrun</title>
+<style>
+  :root {
+    --bg: #f7f7fb;
+    --card: #ffffff;
+    --text: #1f2430;
+    --muted: #6b6f82;
+    --border: #e6e8f0;
+    --accent: #6c5ce7;
+    --accent-soft: #ece9ff;
+    --green: #00a884;
+    --red: #d64545;
+    --code-bg: #12141c;
+    --code-text: #dbe3ff;
+    --shadow: 0 10px 30px rgba(31, 36, 48, 0.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(circle at 10% -10%, #e9e6ff 0, transparent 40%),
+                radial-gradient(circle at 100% 0, #e6f7f2 0, transparent 35%),
+                var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 28px 18px 60px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 26px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+  .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, #6c5ce7, #00b894); display: grid; place-items: center; color: white; font-size: 16px; }
+  .user { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); }
+  .user img { width: 30px; height: 30px; border-radius: 50%; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  h1 { font-size: 30px; margin: 0 0 8px; letter-spacing: -0.5px; }
+  .lead { color: var(--muted); font-size: 15px; line-height: 1.6; margin: 0 0 24px; max-width: 720px; }
+  h2 { font-size: 17px; margin: 0 0 6px; display: flex; align-items: center; gap: 10px; }
+  .step { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700; }
+  .hint { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 0 16px; }
+  .btn { appearance: none; border: none; border-radius: 10px; padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer; transition: transform .12s ease, opacity .12s ease; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-secondary { background: var(--accent-soft); color: var(--accent); }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-sm { padding: 7px 12px; font-size: 12px; border-radius: 8px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .checks { display: grid; gap: 10px; margin: 14px 0 18px; }
+  .check { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }
+  .check input { margin-top: 3px; accent-color: var(--accent); }
+  .check strong { display: block; font-size: 14px; margin-bottom: 2px; }
+  .check span { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .key-box { margin-top: 16px; border: 1px dashed #cdc6ff; background: #faf9ff; border-radius: 12px; padding: 14px; }
+  .key-box.hidden { display: none; }
+  .key-value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; word-break: break-all; color: var(--accent); background: white; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 8px 0 0; }
+  .warn { color: #8a5a00; background: #fff8e6; border: 1px solid #f2dfae; border-radius: 10px; padding: 10px 12px; font-size: 12px; line-height: 1.5; margin-top: 10px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 10px; }
+  .tab { border: 1px solid var(--border); background: white; color: var(--muted); border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: white; }
+  pre { margin: 0; background: var(--code-bg); color: var(--code-text); border-radius: 12px; padding: 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.55; }
+  .snippet { position: relative; }
+  .copy { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,.12); color: #dfe6ff; border: 1px solid rgba(255,255,255,.18); }
+  .snippet-block.hidden { display: none; }
+  .status { margin-top: 12px; font-size: 13px; }
+  .status.ok { color: var(--green); }
+  .status.err { color: var(--red); }
+  .endpoint { margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .endpoint code { background: #f2f3f9; padding: 2px 6px; border-radius: 6px; color: var(--text); }
+  .hidden { display: none !important; }
+  .auth { text-align: center; padding: 70px 24px; }
+  .auth h1 { font-size: 26px; }
+  .auth p { color: var(--muted); margin: 0 0 22px; }
+  a { color: var(--accent); }
+  @media (max-width: 640px) { .wrap { padding: 18px 14px 40px; } .card { padding: 18px; } header { align-items: flex-start; } .user span { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a href="/" class="brand" style="color:inherit;text-decoration:none;">
+      <span class="brand-mark">◈</span> Cerebrun
+    </a>
+    <div id="user-box" class="user hidden">
+      <span id="user-name"></span>
+      <img id="user-avatar" alt="" />
+      <a href="/" class="btn btn-ghost btn-sm" style="text-decoration:none;">Dashboard</a>
+    </div>
+  </header>
+
+  <div id="login-screen" class="card auth hidden">
+    <h1>Connect an AI agent</h1>
+    <p>Sign in to generate an MCP key and copy a ready-to-use config for Claude Desktop, Cursor or Windsurf.</p>
+    <a href="/auth/google?next=/setup" class="btn btn-primary" style="text-decoration:none;display:inline-block;">Sign in with Google</a>
+  </div>
+
+  <div id="app" class="hidden">
+    <h1>Connect an AI agent</h1>
+    <p class="lead">Cerebrun speaks the Model Context Protocol over HTTP. Create a key with the permissions you want, paste the config into your client, and the agent can read your context, search your knowledge base and use the LLM gateway.</p>
+
+    <div class="card">
+      <h2><span class="step">1</span> Create an MCP key</h2>
+      <p class="hint">Layer 0 (preferences) is always included. Pick the deeper layers this agent may access. You can revoke the key later from the dashboard.</p>
+      <div class="checks">
+        <label class="check">
+          <input type="checkbox" id="perm-layer1" checked>
+          <span><strong>Layer 1 — Work context</strong><span>Projects, goals, pinned memories, conversations, knowledge base and debates. Needed for most MCP tools.</span></span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="perm-layer2">
+          <span><strong>Layer 2 — Personal context</strong><span>Identity, location, interests and relationship notes.</span></span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="perm-vault">
+          <span><strong>Vault — Secrets</strong><span>Direct read/write of encrypted secrets. Only enable for agents you trust.</span></span>
+        </label>
+      </div>
+      <div class="row">
+        <button class="btn btn-primary" id="generate-btn" onclick="generateKey()">Generate MCP key</button>
+        <button class="btn btn-secondary" id="test-btn" onclick="testConnection()" disabled>Test connection</button>
+      </div>
+      <div id="key-box" class="key-box hidden">
+        <strong style="font-size:13px;">Your key (shown once — store it safely)</strong>
+        <div id="key-value" class="key-value"></div>
+        <div class="warn">Do not share this key or commit it to a repository. It grants the permissions you selected above.</div>
+      </div>
+      <div id="test-status" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">2</span> Paste the config</h2>
+      <p class="hint">The snippets below use the key you just generated. If you refresh the page the key will not be shown again — create a new one if needed.</p>
+      <div class="tabs">
+        <button class="tab active" data-target="snippet-native" onclick="selectTab(this)">Cursor / Windsurf / native HTTP</button>
+        <button class="tab" data-target="snippet-bridge" onclick="selectTab(this)">Claude Desktop (stdio bridge)</button>
+        <button class="tab" data-target="snippet-curl" onclick="selectTab(this)">cURL</button>
+      </div>
+      <div id="snippet-native" class="snippet snippet-block">
+        <button class="btn btn-sm copy" onclick="copySnippet('snippet-native-code')">Copy</button>
+        <pre id="snippet-native-code"></pre>
+      </div>
+      <div id="snippet-bridge" class="snippet snippet-block hidden">
+        <button class="btn btn-sm copy" onclick="copySnippet('snippet-bridge-code')">Copy</button>
+        <pre id="snippet-bridge-code"></pre>
+      </div>
+      <div id="snippet-curl" class="snippet snippet-block hidden">
+        <button class="btn btn-sm copy" onclick="copySnippet('snippet-curl-code')">Copy</button>
+        <pre id="snippet-curl-code"></pre>
+      </div>
+      <div class="endpoint">Endpoint: <code id="endpoint-label"></code></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">3</span> What the agent can do</h2>
+      <p class="hint" style="margin-bottom:0;">
+        <strong>get_context</strong> reads layers 0–3, <strong>search_context</strong> does semantic search,
+        <strong>push_knowledge</strong> / <strong>query_knowledge</strong> manage the knowledge base,
+        <strong>chat_with_llm</strong> delegates to your configured providers, and
+        <strong>request_vault_access</strong> asks you for consent before any secret is revealed.
+        The full tool list is returned by <code>tools/list</code>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+let apiKey = null;
+
+function endpoint() {
+  return window.location.origin + '/mcp';
+}
+
+function show(id) {
+  document.getElementById(id).classList.remove('hidden');
+}
+
+function hide(id) {
+  document.getElementById(id).classList.add('hidden');
+}
+
+async function init() {
+  try {
+    const res = await fetch('/auth/me');
+    const user = await res.json();
+    if (!user) {
+      show('login-screen');
+      return;
+    }
+    document.getElementById('user-name').textContent = user.display_name || user.email;
+    if (user.avatar_url) {
+      document.getElementById('user-avatar').src = user.avatar_url;
+    }
+    show('user-box');
+    show('app');
+    updateSnippets();
+  } catch (e) {
+    show('login-screen');
+  }
+}
+
+function selectedPermissions() {
+  return {
+    layer1: document.getElementById('perm-layer1').checked,
+    layer2: document.getElementById('perm-layer2').checked,
+    vault: document.getElementById('perm-vault').checked
+  };
+}
+
+async function generateKey() {
+  const button = document.getElementById('generate-btn');
+  button.disabled = true;
+  button.textContent = 'Generating…';
+  try {
+    const res = await fetch('/api/keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'MCP client', permissions: selectedPermissions() })
+    });
+    if (!res.ok) {
+      alert('Could not create the key: ' + (await res.text()));
+      return;
+    }
+    const data = await res.json();
+    apiKey = data.key;
+    document.getElementById('key-value').textContent = apiKey;
+    document.getElementById('test-btn').disabled = false;
+    show('key-box');
+    updateSnippets();
+  } catch (e) {
+    alert('Could not create the key: ' + e.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Generate MCP key';
+  }
+}
+
+async function testConnection() {
+  const status = document.getElementById('test-status');
+  status.className = 'status';
+  status.textContent = 'Testing…';
+  if (!apiKey) {
+    status.className = 'status err';
+    status.textContent = 'Generate a key first.';
+    return;
+  }
+  try {
+    const res = await fetch('/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
+    });
+    const data = await res.json();
+    const server = data.result && data.result.serverInfo;
+    if (res.ok && server) {
+      status.className = 'status ok';
+      status.textContent = 'Connected to ' + server.name + ' (protocol ' + data.result.protocolVersion + ').';
+    } else {
+      status.className = 'status err';
+      status.textContent = 'Connection failed: ' + (data.error && data.error.message || res.status);
+    }
+  } catch (e) {
+    status.className = 'status err';
+    status.textContent = 'Connection failed: ' + e.message;
+  }
+}
+
+function updateSnippets() {
+  const key = apiKey || 'YOUR_API_KEY';
+  const url = endpoint();
+  document.getElementById('endpoint-label').textContent = url;
+
+  const native = {
+    mcpServers: {
+      cerebrun: {
+        url: url,
+        headers: { Authorization: 'Bearer ' + key }
+      }
+    }
+  };
+  const bridge = {
+    mcpServers: {
+      cerebrun: {
+        command: 'npx',
+        args: ['-y', 'mcp-remote', url, '--header', 'Authorization: Bearer ' + key]
+      }
+    }
+  };
+  const curl = 'curl -X POST ' + url + ' \\\n' +
+    '  -H "Authorization: Bearer ' + key + '" \\\n' +
+    '  -H "Content-Type: application/json" \\\n' +
+    '  -d \'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\'';
+
+  document.getElementById('snippet-native-code').textContent = JSON.stringify(native, null, 2);
+  document.getElementById('snippet-bridge-code').textContent = JSON.stringify(bridge, null, 2);
+  document.getElementById('snippet-curl-code').textContent = curl;
+}
+
+function selectTab(button) {
+  document.querySelectorAll('.tabs .tab').forEach(function(tab) {
+    tab.classList.remove('active');
+  });
+  button.classList.add('active');
+  document.querySelectorAll('.snippet-block').forEach(function(block) {
+    block.classList.add('hidden');
+  });
+  const target = document.getElementById(button.dataset.target);
+  if (target) target.classList.remove('hidden');
+}
+
+function copySnippet(id) {
+  const text = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    const button = document.querySelector('#' + id).parentElement.querySelector('.copy');
+    if (button) {
+      const original = button.textContent;
+      button.textContent = 'Copied';
+      setTimeout(function() { button.textContent = original; }, 1500);
+    }
+  });
+}
+
+init();
+</script>
+</body>
+</html>

@@ -78,6 +78,7 @@ pub(crate) fn build_app(state: AppState) -> Router {
     Router::new()
         .route("/", get(serve_dashboard))
         .route("/chat", get(serve_chat))
+        .route("/setup", get(serve_setup))
         .route("/auth/google", get(auth::oauth::google_auth))
         .route("/auth/google/callback", get(auth::oauth::google_callback))
         .route("/auth/logout", post(auth::oauth::logout))
@@ -184,6 +185,11 @@ async fn serve_dashboard() -> axum::response::Html<String> {
 
 async fn serve_chat() -> axum::response::Html<String> {
     let html = include_str!("../static/dashboard/chat.html");
+    axum::response::Html(html.to_string())
+}
+
+async fn serve_setup() -> axum::response::Html<String> {
+    let html = include_str!("../static/setup/index.html");
     axum::response::Html(html.to_string())
 }
 

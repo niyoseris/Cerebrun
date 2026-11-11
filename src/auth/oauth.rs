@@ -15,6 +15,25 @@ pub struct OAuthCallback {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct AuthStartParams {
+    pub next: Option<String>,
+}
+
+/// Only allow same-origin relative paths. This prevents the `next` parameter
+/// from becoming an open redirect.
+fn safe_next_path(value: &str) -> Option<&str> {
+    if !value.starts_with('/') || value.starts_with("//") || value.len() > 512 {
+        return None;
+    }
+    if value.chars().any(|c| {
+        c.is_control() || c.is_whitespace() || c == ';' || c == '\\' || c == '"' || c == ','
+    }) {
+        return None;
+    }
+    Some(value)
+}
+
+#[derive(Debug, Deserialize)]
 struct GoogleTokenResponse {
     access_token: String,
     #[allow(dead_code)]
@@ -56,6 +75,7 @@ fn get_redirect_uri(headers: &HeaderMap, config: &crate::config::AppConfig) -> S
 pub async fn google_auth(
     State(state): State<AppState>,
     headers: HeaderMap,
+    Query(params): Query<AuthStartParams>,
 ) -> Result<(HeaderMap, Redirect), AppError> {
     let csrf_state = generate_random_key("state");
 
@@ -80,6 +100,14 @@ pub async fn google_auth(
         redirect_uri, secure
     );
     resp_headers.append(http::header::SET_COOKIE, redirect_cookie.parse().unwrap());
+
+    if let Some(next) = params.next.as_deref().and_then(safe_next_path) {
+        let next_cookie = format!(
+            "oauth_next={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax{}",
+            next, secure
+        );
+        resp_headers.append(http::header::SET_COOKIE, next_cookie.parse().unwrap());
+    }
 
     let auth_url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=openid%20email%20profile&state={}&access_type=offline&prompt=consent",
@@ -244,8 +272,19 @@ pub async fn google_callback(
             .parse()
             .unwrap(),
     );
+    resp_headers.append(
+        http::header::SET_COOKIE,
+        "oauth_next=; HttpOnly; Path=/; Max-Age=0".parse().unwrap(),
+    );
 
-    Ok((resp_headers, Redirect::temporary("/")))
+    let next_path = cookie_header
+        .split(';')
+        .filter_map(|s| s.trim().strip_prefix("oauth_next="))
+        .next()
+        .and_then(safe_next_path)
+        .unwrap_or("/");
+
+    Ok((resp_headers, Redirect::temporary(next_path)))
 }
 
 fn urlencoding(s: &str) -> String {
@@ -291,7 +330,7 @@ pub async fn logout(
 
 #[cfg(test)]
 mod tests {
-    use super::get_redirect_uri;
+    use super::{get_redirect_uri, safe_next_path};
     use crate::config::AppConfig;
     use axum::http::{HeaderMap, HeaderValue};
 
@@ -323,5 +362,20 @@ mod tests {
 
         let uri = get_redirect_uri(&headers, &config(""));
         assert_eq!(uri, "http://localhost:5050/auth/google/callback");
+    }
+
+    #[test]
+    fn next_path_accepts_same_origin_paths() {
+        assert_eq!(safe_next_path("/setup"), Some("/setup"));
+        assert_eq!(safe_next_path("/setup?next=1"), Some("/setup?next=1"));
+    }
+
+    #[test]
+    fn next_path_rejects_open_redirects() {
+        assert_eq!(safe_next_path("//evil.example"), None);
+        assert_eq!(safe_next_path("https://evil.example"), None);
+        assert_eq!(safe_next_path("/a;b"), None);
+        assert_eq!(safe_next_path("/a b"), None);
+        assert_eq!(safe_next_path("/a\\b"), None);
     }
 }

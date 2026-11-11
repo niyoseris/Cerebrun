@@ -22,6 +22,10 @@ Most AI interactions today are fragmented—each model has its own "vacuum" of c
 - **Frontend:** Vanilla JavaScript (Management Dashboard & Chat UI)
 - **Protocol:** MCP (Model Context Protocol) + REST API
 
+## Connect an agent
+
+After signing in, open `/setup` (for example `https://cereb.run/setup`). It creates a scoped MCP key and generates ready-to-use configs for Cursor/Windsurf (native HTTP), Claude Desktop (via the `mcp-remote` bridge) and cURL, with a one-click connection test.
+
 ## Development & Testing
 
 ```bash

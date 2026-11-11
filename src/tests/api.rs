@@ -358,6 +358,25 @@ async fn public_debate_page_renders_data_and_escapes_html() {
 }
 
 #[tokio::test]
+async fn setup_page_is_public_and_contains_mcp_configs() {
+    let Some(env) = setup().await else {
+        return;
+    };
+    let app = env.app();
+
+    let (status, body) = send(&app, request("GET", "/setup", None, None, None)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let html = String::from_utf8_lossy(&body);
+    assert!(html.contains("Connect an AI agent"));
+    assert!(html.contains("mcpServers"));
+    assert!(html.contains("/mcp"));
+    assert!(html.contains("Authorization"));
+
+    env.cleanup().await;
+}
+
+#[tokio::test]
 async fn fresh_schema_has_required_tables_and_columns() {
     let Some(env) = setup().await else {
         return;
